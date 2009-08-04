@@ -64,14 +64,18 @@
       name="hosted" 
       depends="javac,check_properties" 
       description="Run hosted mode">
-    <java failonerror="true" fork="true" classname="com.google.gwt.dev.HostedMode">
+    <java 
+        failonerror="true" 
+        fork="true" 
+        classname="com.google.gwt.dev.HostedMode">
       <classpath>
         <pathelement location="src"/>
         <path refid="project.class.path"/>
       </classpath>
       <jvmarg value="-Xmx256M"/>
+      <arg value="-noserver"/>
       <arg value="-startupUrl"/>
-      <arg value="Main.html"/>
+      <arg value="http://localhost:8080/ui/Main.html"/>
       <!-- Additional arguments like -style PRETTY or -logLevel DEBUG -->
       <arg value="javaapireader.Main"/>
     </java>

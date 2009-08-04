@@ -185,13 +185,6 @@ public class Main implements EntryPoint {
   }
 
   private static boolean contains(String hay, String needle) {
-    int i, j;
-    for (i = 0; i + needle.length() <= hay.length(); ++i) {
-      for (j = 0; j < needle.length() && 
-          Character.toLowerCase(hay.charAt(i+j)) == Character.toLowerCase(needle.charAt(j)); 
-          ++j);
-      if (j == needle.length()) return true;
-    }
-    return false;
+    return hay.toLowerCase().matches(".*" + needle.toLowerCase() + ".*");
   }
 }
