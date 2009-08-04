@@ -19,13 +19,19 @@ import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
 
 public class Main implements EntryPoint {
-  private static final int MAX_RESULTS = 50;
   private String baseUrl;
   private Set<String> packages = new TreeSet<String>();
   private Map<String,String> classes = new TreeMap<String,String>();
   private final TextBox findBox = new TextBox();
   private final Frame classFrame = new Frame();
   private final VerticalPanel searchResultsPanel = new VerticalPanel();
+  private final Label loadTimeLabel = new Label();
+  private final Label fTimeLabel = new Label();
+  private final Label searchTimeLabel = new Label();
+
+  // performance-related
+  private static final int MAX_RESULTS = 50;
+  private long startSetUrl;
 
   public static class Scanner {
     private final String s;
@@ -53,14 +59,17 @@ public class Main implements EntryPoint {
     final HorizontalPanel urlPanel = new HorizontalPanel();
     urlPanel.add(urlBox);
     urlPanel.add(urlButton);
-    final Button findButton = new Button("find");
     final HorizontalPanel findPanel = new HorizontalPanel();
+    findBox.setWidth("230px");
     findPanel.add(findBox);
-    findPanel.add(findButton);
     final VerticalPanel leftPanel = new VerticalPanel();
     leftPanel.add(urlPanel);
     leftPanel.add(findPanel);
     leftPanel.add(searchResultsPanel);
+    leftPanel.add(new HTML("<h3>Statistics</h3>"));
+    leftPanel.add(fTimeLabel);
+    leftPanel.add(loadTimeLabel);
+    leftPanel.add(searchTimeLabel);
     RootPanel.get().add(leftPanel);
 
     findBox.setFocus(true);
@@ -77,14 +86,14 @@ public class Main implements EntryPoint {
       };
       public BoxButtonHandler(TextBox box, Button button, int timeout) {
         box.addKeyUpHandler(this);
-        button.addClickHandler(this);
+        if (button != null) button.addClickHandler(this);
         this.box = box;
         this.timeout = timeout;
       }
       @Override public void onClick(ClickEvent event) { callGo(); }
       @Override public void onKeyUp(KeyUpEvent event) {
         if (event.getNativeKeyCode() == KeyCodes.KEY_ENTER) callGo();
-        else timer.schedule(timeout);
+        else if (timeout > 0) timer.schedule(timeout);
       }
       private void guardedGo() {
         if (box.getText().equals(lastValue)) return;
@@ -93,18 +102,19 @@ public class Main implements EntryPoint {
       private void callGo() { go(lastValue = box.getText()); }
       public abstract void go(String s);
     }
-    BoxButtonHandler findHandler = new BoxButtonHandler(findBox, findButton, 300) {
+    BoxButtonHandler findHandler = new BoxButtonHandler(findBox, null, 200) {
       @Override public void go(String s) { find(s); }
     };
-    BoxButtonHandler setUrlHandler = new BoxButtonHandler(urlBox, urlButton, 2000) {
+    BoxButtonHandler setUrlHandler = new BoxButtonHandler(urlBox, urlButton, 0) {
       @Override public void go(String s) { setUrl(s); }
     };
 
-    searchResultsPanel.add(new HTML("<p>loading&hellip;</p>"));
     setUrl(urlBox.getText());
   }
 
   private void setUrl(String url) {
+    startSetUrl = System.currentTimeMillis();
+    searchResultsPanel.add(new HTML("<p>loading&hellip;</p>"));
     packages.clear();
     classes.clear();
     int i;
@@ -118,6 +128,7 @@ public class Main implements EntryPoint {
         @Override public void onError(Request r, Throwable e) {}
         @Override public void onResponseReceived(Request request, Response response) {
           if (response.getStatusCode() == 200) {
+            reportTime("fetching", fTimeLabel, startSetUrl, System.currentTimeMillis());
             Scanner s = new Scanner(response.getText());
             while (s.hasNext()) {
               String p = s.next();
@@ -126,6 +137,7 @@ public class Main implements EntryPoint {
               classes.put(c, p);
             }
             find(findBox.getText());
+            reportTime("loading", loadTimeLabel, startSetUrl, System.currentTimeMillis());
           }
         }
       });
@@ -133,10 +145,10 @@ public class Main implements EntryPoint {
   }
 
   private void find(String needle) {
-//long start = System.currentTimeMillis();
+    long start = System.currentTimeMillis();
     searchResultsPanel.clear();
     addResult("overview-summary.html", "Overview");
-    searchResultsPanel.add(new HTML("<h1>Classes</h1>"));
+    searchResultsPanel.add(new HTML("<h2>Classes</h2>"));
     int results = 0;
     for (Map.Entry<String, String> e : classes.entrySet()) {
       if (contains(e.getKey(), needle)) {
@@ -148,7 +160,7 @@ public class Main implements EntryPoint {
       }
     }
     if (results == 0) searchResultsPanel.add(new Label("none found"));
-    searchResultsPanel.add(new HTML("<h1>Packages</h1>"));
+    searchResultsPanel.add(new HTML("<h2>Packages</h2>"));
     results = 0;
     for (String s : packages) {
       if (contains(s, needle)) {
@@ -160,8 +172,11 @@ public class Main implements EntryPoint {
       }
     }
     if (results == 0) searchResultsPanel.add(new Label("none found"));
-//long stop = System.currentTimeMillis();
-//searchResultsPanel.add(new Label("Search took " + (1e-6 * (stop-start))));
+    reportTime("search", searchTimeLabel, start, System.currentTimeMillis());
+  }
+
+  private void reportTime(String action, Label target, long a, long b) {
+    target.setText(action + " took " + (b-a) + "ms");
   }
 
   private void addResult(String link, String label) {
