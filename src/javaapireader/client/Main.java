@@ -24,8 +24,10 @@ import com.google.gwt.user.client.ui.*;
 
 public class Main implements EntryPoint {
   private String baseUrl;
-  private Set<String> packages = new HashSet<String>();
-  private Map<String,String> classes = new HashMap<String,String>();
+  private String[] packages;
+  private String[] classes;
+  private int[] packageOfClass;
+//  private boolean[] isInterface;
   private final TextBox findBox = new TextBox();
   private final Frame classFrame = new Frame();
   private final VerticalPanel searchResultsPanel = new VerticalPanel();
@@ -45,6 +47,20 @@ public class Main implements EntryPoint {
     public Scanner(String s) { this.s = s; read(); }
     public boolean hasNext() { return next != null; }
     public String next() { String r = next; read(); return r; }
+
+    public int nextInt() {
+      int r = 0;
+      for (int i = 0; i < next.length(); ++i)
+        r = 10 * r + (int) next.charAt(i) - (int) '0';
+      read();
+      return r;
+    }
+
+    public boolean nextBool() {
+      boolean r = !"0".equals(next);
+      read();
+      return r;
+    }
 
     public void read() {
       while (pos < s.length() && Character.isSpace(s.charAt(pos))) pos++;
@@ -121,8 +137,6 @@ public class Main implements EntryPoint {
   private void setUrl(String url) {
     startSetUrl = System.currentTimeMillis();
     searchResultsPanel.add(new HTML("<p>loading&hellip;</p>"));
-    packages.clear();
-    classes.clear();
     int i;
     for (i = url.length(); --i >= 0 && url.charAt(i) == '/'; );
     baseUrl = url.substring(0, i + 1);
@@ -137,11 +151,16 @@ public class Main implements EntryPoint {
             long afterFetch = System.currentTimeMillis();
             reportTime("fetching", timeLabelB, startSetUrl, afterFetch);
             Scanner s = new Scanner(response.getText());
-            while (s.hasNext()) {
-              String p = s.next();
-              String c = s.next();
-              packages.add(p);
-              classes.put(c, p);
+            int pCnt = s.nextInt();
+            int cCnt = s.nextInt();
+            packages = new String[pCnt];
+            classes = new String[cCnt];
+            packageOfClass = new int[cCnt];
+            for (int i = 0; i < pCnt; ++i)
+              packages[i] = s.next();
+            for (int i = 0; i < cCnt; ++i) {
+              classes[i] = s.next();
+              packageOfClass[i] = s.nextInt();
             }
             reportTime("parsing", timeLabelA, afterFetch, System.currentTimeMillis());
             find(findBox.getText());
@@ -153,28 +172,30 @@ public class Main implements EntryPoint {
 
   private void find(String needle) {
     long start = System.currentTimeMillis();
-    ArrayList<String> matchingClasses = new ArrayList<String>();
-    for (String s : classes.keySet())
-      if (contains(s, needle)) matchingClasses.add(s);
-    Collections.sort(matchingClasses);
-    ArrayList<String> matchingPackages = new ArrayList<String>();
-    for (String s : packages) 
-      if (contains(s, needle)) matchingPackages.add(s);
-    Collections.sort(matchingPackages);
-    reportTime("search", timeLabelC, start, System.currentTimeMillis());
+    ArrayList<Integer> matchingClasses = new ArrayList<Integer>();
+    for (int i = 0; i < classes.length; ++i)
+      if (contains(classes[i], needle)) matchingClasses.add(i);
+    ArrayList<Integer> matchingPackages = new ArrayList<Integer>();
+    for (int i = 0; i < packages.length; ++i) 
+      if (contains(packages[i], needle)) matchingPackages.add(i);
+    reportTime("searching", timeLabelC, start, System.currentTimeMillis());
     
     start = System.currentTimeMillis();
     searchResultsPanel.clear();
     addResult("overview-summary.html", "Overview");
     searchResultsPanel.add(new HTML("<h2>Classes</h2>"));
     if (matchingClasses.isEmpty()) searchResultsPanel.add(new Label("none found"));
-    for (int i = 0; i < matchingClasses.size() && i < MAX_RESULTS; ++i)
-      addResult(classes.get(matchingClasses.get(i)).replace('.', '/') + "/" + matchingClasses.get(i) + ".html", matchingClasses.get(i));
+    for (int i = 0; i < matchingClasses.size() && i < MAX_RESULTS; ++i) {
+      int c = matchingClasses.get(i);
+      addResult(packages[packageOfClass[c]].replace('.', '/') + "/" + classes[c] + ".html", classes[c]);
+    }
     searchResultsPanel.add(new HTML("<h2>Packages</h2>"));
     if (matchingPackages.isEmpty()) searchResultsPanel.add(new Label("none found"));
-    for (int i = 0; i < matchingPackages.size() && i < MAX_RESULTS; ++i)
-      addResult(matchingPackages.get(i).replace('.', '/') + "/package-summary.html", matchingPackages.get(i));
-    reportTime("report", timeLabelD, start, System.currentTimeMillis());
+    for (int i = 0; i < matchingPackages.size() && i < MAX_RESULTS; ++i) {
+      int p = matchingPackages.get(i);
+      addResult(packages[p].replace('.', '/') + "/package-summary.html", packages[p]);
+    }
+    reportTime("reporting", timeLabelD, start, System.currentTimeMillis());
   }
 
   private void reportTime(String action, Label target, long a, long b) {
