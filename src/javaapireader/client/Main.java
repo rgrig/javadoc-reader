@@ -23,23 +23,41 @@ import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
 
 public class Main implements EntryPoint {
+  // the current javdoc
   private String baseUrl;
+
+  // some UI elements
+  private final TextBox findBox = new TextBox();
+  private final Frame classFrame = new Frame();
+  private final VerticalPanel overviewPanel = new VerticalPanel();
+  private final VerticalPanel classesPanel = new VerticalPanel();
+  private final HorizontalPanel classesMenuPanel = new HorizontalPanel();
+  private final Button moreClassesButton = new Button("more");
+  private final VerticalPanel packagesPanel = new VerticalPanel();
+  private final HorizontalPanel packagesMenuPanel = new HorizontalPanel();
+  private final Button morePackagesButton = new Button("more");
+
+  // the index for the current baseUrl
   private String[] packages;
   private String[] classes;
   private int[] packageOfClass;
-//  private boolean[] isInterface;
-  private final TextBox findBox = new TextBox();
-  private final Frame classFrame = new Frame();
-  private final VerticalPanel searchResultsPanel = new VerticalPanel();
+  private boolean[] isInterface;
+
+  // the result of the last search
+  private ArrayList<Integer> matchingClasses = new ArrayList<Integer>();
+  private ArrayList<Integer> matchingPackages = new ArrayList<Integer>();
+  private static final int INITIAL_RESULT_COUNT = 20;
+  private int reportedClasses;
+  private int reportedPackages;
+
+  // performance-related
+  private long startSetUrl;
   private final Label timeLabelA = new Label();
   private final Label timeLabelB = new Label();
   private final Label timeLabelC = new Label();
   private final Label timeLabelD = new Label();
 
-  // performance-related
-  private static final int MAX_RESULTS = 20;
-  private long startSetUrl;
-
+  // a very simple version of java.util.Scanner, which is not in GWT
   public static class Scanner {
     private final String s;
     private int pos;
@@ -74,6 +92,7 @@ public class Main implements EntryPoint {
 
   /** Entry point. */
   public void onModuleLoad() {
+    // set up the layout
     final TextBox urlBox = new TextBox();
     urlBox.setText("http://java.sun.com/javase/6/docs/api/");
     final Button urlButton = new Button("set");
@@ -86,7 +105,11 @@ public class Main implements EntryPoint {
     final VerticalPanel leftPanel = new VerticalPanel();
     leftPanel.add(urlPanel);
     leftPanel.add(findPanel);
-    leftPanel.add(searchResultsPanel);
+    leftPanel.add(overviewPanel);
+    leftPanel.add(classesPanel);
+    leftPanel.add(classesMenuPanel);
+    leftPanel.add(packagesPanel);
+    leftPanel.add(packagesMenuPanel);
     leftPanel.add(new HTML("<h3>Statistics</h3>"));
     leftPanel.add(timeLabelB);
     leftPanel.add(timeLabelA);
@@ -96,7 +119,7 @@ public class Main implements EntryPoint {
 
     findBox.setFocus(true);
 
-    // Event handlers
+    // set up the event handlers
     abstract class BoxButtonHandler implements ClickHandler, KeyUpHandler {
       private String lastValue;
       final private TextBox box;
@@ -130,13 +153,20 @@ public class Main implements EntryPoint {
     BoxButtonHandler setUrlHandler = new BoxButtonHandler(urlBox, urlButton, 0) {
       @Override public void go(String s) { setUrl(s); }
     };
+    moreClassesButton.addClickHandler(new ClickHandler() {
+      @Override public void onClick(ClickEvent e) { reportMoreClasses(); }
+    });
+    morePackagesButton.addClickHandler(new ClickHandler() {
+      @Override public void onClick(ClickEvent e) {reportMorePackages(); }
+    });
 
+    // initialize content for the default javadoc
     setUrl(urlBox.getText());
   }
 
+  // ask for an index for the javadoc at |url|
   private void setUrl(String url) {
     startSetUrl = System.currentTimeMillis();
-    searchResultsPanel.add(new HTML("<p>loading&hellip;</p>"));
     int i;
     for (i = url.length(); --i >= 0 && url.charAt(i) == '/'; );
     baseUrl = url.substring(0, i + 1);
@@ -149,6 +179,10 @@ public class Main implements EntryPoint {
         @Override public void onResponseReceived(Request request, Response response) {
           if (response.getStatusCode() == 200) {
             long afterFetch = System.currentTimeMillis();
+            overviewPanel.clear();
+            overviewPanel.add(new HTML(
+                "<a href=\"" + baseUrl + "/overview-summary.html" +
+                "\" target=\"classFrame\">Overview</a>"));
             reportTime("fetching", timeLabelB, startSetUrl, afterFetch);
             Scanner s = new Scanner(response.getText());
             int pCnt = s.nextInt();
@@ -156,10 +190,12 @@ public class Main implements EntryPoint {
             packages = new String[pCnt];
             classes = new String[cCnt];
             packageOfClass = new int[cCnt];
+            isInterface = new boolean[cCnt];
             for (int i = 0; i < pCnt; ++i)
               packages[i] = s.next();
             for (int i = 0; i < cCnt; ++i) {
               classes[i] = s.next();
+              isInterface[i] = s.nextBool();
               packageOfClass[i] = s.nextInt();
             }
             reportTime("parsing", timeLabelA, afterFetch, System.currentTimeMillis());
@@ -172,42 +208,79 @@ public class Main implements EntryPoint {
 
   private void find(String needle) {
     long start = System.currentTimeMillis();
-    ArrayList<Integer> matchingClasses = new ArrayList<Integer>();
+    needle = needle.toLowerCase();
+    matchingClasses.clear();
     for (int i = 0; i < classes.length; ++i)
       if (contains(classes[i], needle)) matchingClasses.add(i);
-    ArrayList<Integer> matchingPackages = new ArrayList<Integer>();
+    matchingPackages.clear();
     for (int i = 0; i < packages.length; ++i) 
       if (contains(packages[i], needle)) matchingPackages.add(i);
     reportTime("searching", timeLabelC, start, System.currentTimeMillis());
-    
-    start = System.currentTimeMillis();
-    searchResultsPanel.clear();
-    addResult("overview-summary.html", "Overview");
-    searchResultsPanel.add(new HTML("<h2>Classes</h2>"));
-    if (matchingClasses.isEmpty()) searchResultsPanel.add(new Label("none found"));
-    for (int i = 0; i < matchingClasses.size() && i < MAX_RESULTS; ++i) {
-      int c = matchingClasses.get(i);
-      addResult(packages[packageOfClass[c]].replace('.', '/') + "/" + classes[c] + ".html", classes[c]);
+
+    classesPanel.clear();
+    classesPanel.add(new HTML("<h2>Classes</h2>"));
+    reportedClasses = 0;
+    if (matchingClasses.isEmpty())
+      classesPanel.add(new Label("none found"));
+    classesMenuPanel.add(moreClassesButton);
+    packagesPanel.clear();
+    packagesPanel.add(new HTML("<h2>Packages</h2>"));
+    reportedPackages = 0;
+    if (matchingPackages.isEmpty())
+      packagesPanel.add(new Label("none found"));
+    packagesMenuPanel.add(morePackagesButton);
+    reportMoreClasses();
+    reportMorePackages();
+  }
+
+  // TODO eliminate duplication between reportMoreClasses() and reportMorePackages()
+  private void reportMoreClasses() {
+    int limit = Math.min(
+        matchingClasses.size(),
+        Math.max(INITIAL_RESULT_COUNT, 2 * reportedClasses));
+    while (reportedClasses < limit) {
+      int ci = matchingClasses.get(reportedClasses);
+      String c = classes[ci];
+      String p = packages[packageOfClass[ci]];
+      boolean ii = isInterface[ci];
+      classesPanel.add(new HTML(
+          (ii? "<i>" : "") +
+          "<a href=\"" +
+          baseUrl + "/" + p.replace('.', '/') + "/" + c + ".html" +
+          "\" target=\"classFrame\">" + 
+          c +
+          "</a>" + (ii? "</i>" : "") + "&nbsp;in&nbsp;" +
+          p +
+          "<br>"));
+      ++reportedClasses;
     }
-    searchResultsPanel.add(new HTML("<h2>Packages</h2>"));
-    if (matchingPackages.isEmpty()) searchResultsPanel.add(new Label("none found"));
-    for (int i = 0; i < matchingPackages.size() && i < MAX_RESULTS; ++i) {
-      int p = matchingPackages.get(i);
-      addResult(packages[p].replace('.', '/') + "/package-summary.html", packages[p]);
+    if (reportedClasses == matchingClasses.size())
+      classesMenuPanel.clear();
+  }
+
+  private void reportMorePackages() {
+    int limit = Math.min(
+        matchingPackages.size(),
+        Math.max(INITIAL_RESULT_COUNT, 2 * reportedPackages));
+    while (reportedPackages < limit) {
+      String p = packages[matchingPackages.get(reportedPackages)];
+      packagesPanel.add(new HTML(
+          "<a href=\"" +
+          baseUrl + "/" + p.replace('.', '/') + "/package-summary.html" +
+          "\" target=\"classFrame\">" +
+          p +
+          "</a><br>"));
+      ++reportedPackages;
     }
-    reportTime("reporting", timeLabelD, start, System.currentTimeMillis());
+    if (reportedPackages == matchingPackages.size())
+      packagesMenuPanel.clear();
   }
 
   private void reportTime(String action, Label target, long a, long b) {
     target.setText(action + " took " + (b-a) + "ms");
   }
 
-  private void addResult(String link, String label) {
-    searchResultsPanel.add(new HTML("<a href=\"" + baseUrl + "/" + link +
-        "\" + target=\"classFrame\">" + label + "</a><br>"));
-  }
-
   private static boolean contains(String hay, String needle) {
-    return hay.toLowerCase().matches(".*" + needle.toLowerCase() + ".*");
+    return hay.toLowerCase().matches(".*" + needle + ".*");
   }
 }

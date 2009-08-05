@@ -9,7 +9,6 @@ class ClassListParser(HTMLParser):
     self.in_a = False
     self.packages = set()
     self.classes = dict()
-    self.interfaces = set()
     self.current_package = None
     self.is_interface = False
 
@@ -25,8 +24,8 @@ class ClassListParser(HTMLParser):
       
   def handle_data(self, data):
     if self.in_a:
-      self.classes[data] = self.current_package
-      if self.is_interface: self.interfaces.add(data)
+      cp = (data, self.current_package)
+      self.classes[cp] = self.is_interface
       self.in_a = False
     
   def result(self):
@@ -42,11 +41,11 @@ class ClassListParser(HTMLParser):
     r = ''
     r += str(len(ps)) + ' ' + str(len(cs)) + '\n'
     for p in ps: r += p + '\n'
-    for c in cs:
+    for c, p in cs:
       r += c
-#      if c in self.interfaces: r += ' 1'
-#      else: r += ' 0'
-      r += ' ' + str(pidx[self.classes[c]]) + '\n'
+      if self.classes[(c, p)]: r += ' 1'
+      else: r += ' 0'
+      r += ' ' + str(pidx[p]) + '\n'
     return r
 
 class MainPage(webapp.RequestHandler):
