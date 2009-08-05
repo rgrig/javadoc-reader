@@ -1,6 +1,7 @@
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 from google.appengine.api import urlfetch
+from google.appengine.api import memcache
 from HTMLParser import HTMLParser
 
 class ClassListParser(HTMLParser):
@@ -52,11 +53,17 @@ class MainPage(webapp.RequestHandler):
   def get(self):
     self.response.headers['Content-Type'] = 'text/plain'
     url = self.request.get('url') + '/allclasses-frame.html'
-    result = urlfetch.fetch(url)
-    if result.status_code == 200:
-      p = ClassListParser()
-      p.feed(result.content)
-      self.response.out.write(p.result())
+    data = memcache.get('url::' + url)
+    r = '0 0\n'
+    if data is not None: r = data
+    else:
+      fr = urlfetch.fetch(url)
+      if fr.status_code == 200:
+        p = ClassListParser()
+        p.feed(fr.content)
+        r = p.result()
+        memcache.add('url::' + url, r, 3600)
+    self.response.out.write(r)
 
 application = webapp.WSGIApplication(
                                      [('/fetch', MainPage)],
