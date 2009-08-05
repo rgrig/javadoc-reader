@@ -57,12 +57,14 @@ class MainPage(webapp.RequestHandler):
     r = '0 0\n'
     if data is not None: r = data
     else:
-      fr = urlfetch.fetch(url)
-      if fr.status_code == 200:
-        p = ClassListParser()
-        p.feed(fr.content)
-        r = p.result()
-        memcache.add('url::' + url, r, 3600)
+      try:
+        fr = urlfetch.fetch(url)
+        if fr.status_code == 200:
+          p = ClassListParser()
+          p.feed(fr.content)
+          r = p.result()
+          memcache.add('url::' + url, r, 3600)
+      except:
     self.response.out.write(r)
 
 application = webapp.WSGIApplication(
