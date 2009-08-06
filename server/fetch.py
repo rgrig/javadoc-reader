@@ -1,8 +1,9 @@
+from HTMLParser import HTMLParser
+from google.appengine.api import memcache
+from google.appengine.api import urlfetch
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
-from google.appengine.api import urlfetch
-from google.appengine.api import memcache
-from HTMLParser import HTMLParser
+import datetime
 
 class ClassListParser(HTMLParser):
   def __init__(self):
@@ -63,8 +64,9 @@ class MainPage(webapp.RequestHandler):
           p = ClassListParser()
           p.feed(fr.content)
           r = p.result()
-          memcache.add('url::' + url, r, 3600)
+          memcache.add('url::' + url, r, 604800)
       except:
+        r = '0 0\n'
     self.response.out.write(r)
 
 application = webapp.WSGIApplication(

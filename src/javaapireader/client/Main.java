@@ -138,7 +138,10 @@ public class Main implements EntryPoint {
       @Override public void onClick(ClickEvent event) { callGo(); }
       @Override public void onKeyUp(KeyUpEvent event) {
         if (event.getNativeKeyCode() == KeyCodes.KEY_ENTER) callGo();
-        else if (timeout > 0) timer.schedule(timeout);
+        else if (timeout > 0) {
+          timer.cancel();
+          timer.schedule(timeout);
+        }
       }
       private void guardedGo() {
         if (box.getText().equals(lastValue)) return;
@@ -173,6 +176,8 @@ public class Main implements EntryPoint {
     RequestBuilder rb = new RequestBuilder(
         RequestBuilder.GET,
         "/fetch?url=" + baseUrl);
+    rb.setHeader("Accept-Encoding", "gzip");
+    rb.setHeader("User-Agent", "gzip");
     try {
       rb.sendRequest(null, new RequestCallback() {
         @Override public void onError(Request r, Throwable e) {}
