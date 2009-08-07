@@ -43,6 +43,13 @@ public class Main implements EntryPoint {
   private int[] packageOfClass;
   private boolean[] isInterface;
 
+  // the working set for this baseUrl
+  private static final int VISITED_SIZE = 100;
+  private int[] visitedClasses;
+  private int visitedClassesStart;
+  private int[] visitedPackages;
+  private int visitedPackagesStart;
+
   // the result of the last search
   private ArrayList<Integer> matchingClasses = new ArrayList<Integer>();
   private ArrayList<Integer> matchingPackages = new ArrayList<Integer>();
@@ -56,39 +63,6 @@ public class Main implements EntryPoint {
   private final Label timeLabelB = new Label();
   private final Label timeLabelC = new Label();
   private final Label timeLabelD = new Label();
-
-  // a very simple version of java.util.Scanner, which is not in GWT
-  public static class Scanner {
-    private final String s;
-    private int pos;
-    private String next;
-    public Scanner(String s) { this.s = s; read(); }
-    public boolean hasNext() { return next != null; }
-    public String next() { String r = next; read(); return r; }
-
-    public int nextInt() {
-      int r = 0;
-      for (int i = 0; i < next.length(); ++i)
-        r = 10 * r + (int) next.charAt(i) - (int) '0';
-      read();
-      return r;
-    }
-
-    public boolean nextBool() {
-      boolean r = !"0".equals(next);
-      read();
-      return r;
-    }
-
-    public void read() {
-      while (pos < s.length() && Character.isSpace(s.charAt(pos))) pos++;
-      if (pos == s.length()) { next = null; return; }
-      int end;
-      for (end = pos; end < s.length() && !Character.isSpace(s.charAt(end)); ++end);
-      next = s.substring(pos, end);
-      pos = end;
-    }
-  }
 
   /** Entry point. */
   public void onModuleLoad() {
