@@ -1,31 +1,18 @@
 package javaapireader.client;
 
-import java.util.Collections;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.List;
 
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.dom.client.Element;
-import com.google.gwt.event.dom.client.ClickEvent;
-import com.google.gwt.event.dom.client.ClickHandler;
-import com.google.gwt.event.dom.client.KeyCodes;
-import com.google.gwt.event.dom.client.KeyUpEvent;
-import com.google.gwt.event.dom.client.KeyUpHandler;
+import com.google.gwt.event.dom.client.*;
 import com.google.gwt.http.client.*;
 import com.google.gwt.user.client.*;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
 
 public class Main implements EntryPoint {
-  // the current javdoc
-  private String baseUrl;
-
   // some UI elements
   private final TextBox findBox = new TextBox();
   private final Frame classFrame = new Frame();
@@ -37,32 +24,18 @@ public class Main implements EntryPoint {
   private final HorizontalPanel packagesMenuPanel = new HorizontalPanel();
   private final Button morePackagesButton = new Button("more");
 
-  // the index for the current baseUrl
-  private String[] packages;
-  private String[] classes;
-  private int[] packageOfClass;
-  private boolean[] isInterface;
-
-  // the working set for this baseUrl
-  private static final int VISITED_SIZE = 100;
-  private int[] visitedClasses;
-  private int visitedClassesStart;
-  private int[] visitedPackages;
-  private int visitedPackagesStart;
-
-  // the result of the last search
-  private ArrayList<Integer> matchingClasses = new ArrayList<Integer>();
-  private ArrayList<Integer> matchingPackages = new ArrayList<Integer>();
-  private static final int INITIAL_RESULT_COUNT = 20;
-  private int reportedClasses;
-  private int reportedPackages;
-
   // performance-related
+  private static final int INITIAL_RESULT_COUNT = 20;
   private long startSetUrl;
   private final Label timeLabelA = new Label();
   private final Label timeLabelB = new Label();
   private final Label timeLabelC = new Label();
   private final Label timeLabelD = new Label();
+
+  // the result of the last search
+  private Index index;
+  private Finder packageFinder = new Finder();
+  private Finder classFinder = new Finder();
 
   /** Entry point. */
   public void onModuleLoad() {
@@ -84,11 +57,13 @@ public class Main implements EntryPoint {
     leftPanel.add(classesMenuPanel);
     leftPanel.add(packagesPanel);
     leftPanel.add(packagesMenuPanel);
-    leftPanel.add(new HTML("<h3>Statistics</h3>"));
-    leftPanel.add(timeLabelB);
-    leftPanel.add(timeLabelA);
-    leftPanel.add(timeLabelC);
-    leftPanel.add(timeLabelD);
+    final VerticalPanel statisticsPanel = new VerticalPanel();
+    statisticsPanel.add(new HTML("<h3>Statistics</h3>"));
+    statisticsPanel.add(timeLabelB);
+    statisticsPanel.add(timeLabelA);
+    statisticsPanel.add(timeLabelC);
+    statisticsPanel.add(timeLabelD);
+    leftPanel.add(statisticsPanel); // for release, comment this line
     RootPanel.get().add(leftPanel);
 
     findBox.setFocus(true);
@@ -131,10 +106,14 @@ public class Main implements EntryPoint {
       @Override public void go(String s) { setUrl(s); }
     };
     moreClassesButton.addClickHandler(new ClickHandler() {
-      @Override public void onClick(ClickEvent e) { reportMoreClasses(); }
+      @Override public void onClick(ClickEvent e) { 
+        reportMore(classFinder, classesPanel, classesMenuPanel); 
+      }
     });
     morePackagesButton.addClickHandler(new ClickHandler() {
-      @Override public void onClick(ClickEvent e) {reportMorePackages(); }
+      @Override public void onClick(ClickEvent e) {
+        reportMore(packageFinder, packagesPanel, packagesMenuPanel);
+      }
     });
 
     // initialize content for the default javadoc
@@ -144,39 +123,49 @@ public class Main implements EntryPoint {
   // ask for an index for the javadoc at |url|
   private void setUrl(String url) {
     startSetUrl = System.currentTimeMillis();
+    url = URL.encode(url);
     int i;
-    for (i = url.length(); --i >= 0 && url.charAt(i) == '/'; );
-    baseUrl = url.substring(0, i + 1);
+    if (url.endsWith("/") || url.endsWith(".html")) {
+      i = url.lastIndexOf('/');
+      if (i == -1) {
+Window.alert("DBG: Bad url " + url);
+        return;
+      }
+      url = url.substring(0, i);
+    }
+    index = new Index(url);
     RequestBuilder rb = new RequestBuilder(
         RequestBuilder.GET,
-        "/fetch?url=" + baseUrl);
+        "/fetch?url=" + index.url());
     rb.setHeader("Accept-Encoding", "gzip");
     rb.setHeader("User-Agent", "gzip");
     try {
       rb.sendRequest(null, new RequestCallback() {
-        @Override public void onError(Request r, Throwable e) {}
+        @Override public void onError(Request r, Throwable e) {
+Window.alert("DBG: http request error: " + e);
+        }
+
         @Override public void onResponseReceived(Request request, Response response) {
           if (response.getStatusCode() == 200) {
             long afterFetch = System.currentTimeMillis();
             overviewPanel.clear();
             overviewPanel.add(new HTML(
-                "<a href=\"" + baseUrl + "/overview-summary.html" +
+                "<a href=\"" + index.url() + "/overview-summary.html" +
                 "\" target=\"classFrame\">Overview</a>"));
             reportTime("fetching", timeLabelB, startSetUrl, afterFetch);
             Scanner s = new Scanner(response.getText());
             int pCnt = s.nextInt();
             int cCnt = s.nextInt();
-            packages = new String[pCnt];
-            classes = new String[cCnt];
-            packageOfClass = new int[cCnt];
-            isInterface = new boolean[cCnt];
             for (int i = 0; i < pCnt; ++i)
-              packages[i] = s.next();
+              index.addPackage(s.next());
             for (int i = 0; i < cCnt; ++i) {
-              classes[i] = s.next();
-              isInterface[i] = s.nextBool();
-              packageOfClass[i] = s.nextInt();
+              String className = s.next();
+              boolean isInterface = s.nextBool();
+              int packageIdx = s.nextInt();
+              index.addClass(className, isInterface, packageIdx);
             }
+            classFinder.hay(index.allClasses);
+            packageFinder.hay(index.allPackages);
             reportTime("parsing", timeLabelA, afterFetch, System.currentTimeMillis());
             find(findBox.getText());
           }
@@ -188,71 +177,46 @@ public class Main implements EntryPoint {
   private void find(String needle) {
     long start = System.currentTimeMillis();
     needle = needle.toLowerCase();
-    matchingClasses.clear();
-    for (int i = 0; i < classes.length; ++i)
-      if (contains(classes[i], needle)) matchingClasses.add(i);
-    matchingPackages.clear();
-    for (int i = 0; i < packages.length; ++i) 
-      if (contains(packages[i], needle)) matchingPackages.add(i);
-    reportTime("searching", timeLabelC, start, System.currentTimeMillis());
+    boolean hasDot = false;
+    boolean hasSpecial = false;
+    for (int i = 0; i < needle.length(); ++i) {
+      hasDot |= needle.charAt(i) == '.';
+      hasSpecial |= 
+          !Character.isLetterOrDigit(needle.charAt(i)) && 
+          needle.charAt(i) != '.';
+    }
+    if (hasSpecial)
+      needle = needle.replaceAll("\\.", "\\.").replaceAll("\\*", ".*");
+    else if (hasDot)
+      needle = ".*" + needle.replaceAll("\\.", "\\\\.") + ".*";
+    else
+      needle = ".*" + needle + "[^\\.]*";
+    classFinder.needle(needle);
+    packageFinder.needle(needle);
 
     classesPanel.clear();
     classesPanel.add(new HTML("<h2>Classes</h2>"));
-    reportedClasses = 0;
-    if (matchingClasses.isEmpty())
-      classesPanel.add(new Label("none found"));
     classesMenuPanel.add(moreClassesButton);
     packagesPanel.clear();
     packagesPanel.add(new HTML("<h2>Packages</h2>"));
-    reportedPackages = 0;
-    if (matchingPackages.isEmpty())
-      packagesPanel.add(new Label("none found"));
     packagesMenuPanel.add(morePackagesButton);
-    reportMoreClasses();
-    reportMorePackages();
+    reportTime("preparing", timeLabelC, start, System.currentTimeMillis());
+    reportMore(classFinder, classesPanel, classesMenuPanel);
+    reportMore(packageFinder, packagesPanel, packagesMenuPanel);
   }
 
-  // TODO eliminate duplication between reportMoreClasses() and reportMorePackages()
-  private void reportMoreClasses() {
-    int limit = Math.min(
-        matchingClasses.size(),
-        Math.max(INITIAL_RESULT_COUNT, 2 * reportedClasses));
-    while (reportedClasses < limit) {
-      int ci = matchingClasses.get(reportedClasses);
-      String c = classes[ci];
-      String p = packages[packageOfClass[ci]];
-      boolean ii = isInterface[ci];
-      classesPanel.add(new HTML(
-          (ii? "<i>" : "") +
-          "<a href=\"" +
-          baseUrl + "/" + p.replace('.', '/') + "/" + c + ".html" +
-          "\" target=\"classFrame\">" + 
-          c +
-          "</a>" + (ii? "</i>" : "") + "&nbsp;in&nbsp;" +
-          p +
-          "<br>"));
-      ++reportedClasses;
-    }
-    if (reportedClasses == matchingClasses.size())
-      classesMenuPanel.clear();
-  }
-
-  private void reportMorePackages() {
-    int limit = Math.min(
-        matchingPackages.size(),
-        Math.max(INITIAL_RESULT_COUNT, 2 * reportedPackages));
-    while (reportedPackages < limit) {
-      String p = packages[matchingPackages.get(reportedPackages)];
-      packagesPanel.add(new HTML(
-          "<a href=\"" +
-          baseUrl + "/" + p.replace('.', '/') + "/package-summary.html" +
-          "\" target=\"classFrame\">" +
-          p +
-          "</a><br>"));
-      ++reportedPackages;
-    }
-    if (reportedPackages == matchingPackages.size())
-      packagesMenuPanel.clear();
+  private void reportMore(
+      Finder finder, 
+      ComplexPanel resultPanel, 
+      Panel morePanel
+  ) {
+    long start = System.currentTimeMillis();
+    int toGet = Math.max(INITIAL_RESULT_COUNT, resultPanel.getWidgetCount());
+    List<HTML> newResults = new ArrayList<HTML>();
+    boolean more = finder.find(toGet, newResults);
+    for (HTML h : newResults) resultPanel.add(h);
+    if (!more) morePanel.clear();
+    reportTime("searching", timeLabelD, start, System.currentTimeMillis());
   }
 
   private void reportTime(String action, Label target, long a, long b) {
