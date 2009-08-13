@@ -26,11 +26,9 @@ public class Main implements EntryPoint {
 
   // performance-related
   private static final int INITIAL_RESULT_COUNT = 20;
+  private static final int TIME_LABELS_COUNT = 5;
   private long startSetUrl;
-  private final Label timeLabelA = new Label();
-  private final Label timeLabelB = new Label();
-  private final Label timeLabelC = new Label();
-  private final Label timeLabelD = new Label();
+  private final Label[] timeLabels = new Label[TIME_LABELS_COUNT];
 
   // the result of the last search
   private Index index;
@@ -59,10 +57,10 @@ public class Main implements EntryPoint {
     leftPanel.add(packagesMenuPanel);
     final VerticalPanel statisticsPanel = new VerticalPanel();
     statisticsPanel.add(new HTML("<h3>Statistics</h3>"));
-    statisticsPanel.add(timeLabelB);
-    statisticsPanel.add(timeLabelA);
-    statisticsPanel.add(timeLabelC);
-    statisticsPanel.add(timeLabelD);
+    for (int i = 0; i < TIME_LABELS_COUNT; ++i) {
+      timeLabels[i] = new Label();
+      statisticsPanel.add(timeLabels[i]);
+    }
     leftPanel.add(statisticsPanel); // for release, comment this line
     RootPanel.get().add(leftPanel);
 
@@ -107,12 +105,12 @@ public class Main implements EntryPoint {
     };
     moreClassesButton.addClickHandler(new ClickHandler() {
       @Override public void onClick(ClickEvent e) { 
-        reportMore(classFinder, classesPanel, classesMenuPanel); 
+        reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[3]); 
       }
     });
     morePackagesButton.addClickHandler(new ClickHandler() {
       @Override public void onClick(ClickEvent e) {
-        reportMore(packageFinder, packagesPanel, packagesMenuPanel);
+        reportMore(packageFinder, packagesPanel, packagesMenuPanel, timeLabels[4]);
       }
     });
 
@@ -152,7 +150,7 @@ Window.alert("DBG: http request error: " + e);
             overviewPanel.add(new HTML(
                 "<a href=\"" + index.url() + "/overview-summary.html" +
                 "\" target=\"classFrame\">Overview</a>"));
-            reportTime("fetching", timeLabelB, startSetUrl, afterFetch);
+            reportTime("fetching", timeLabels[0], startSetUrl, afterFetch);
             Scanner s = new Scanner(response.getText());
             int pCnt = s.nextInt();
             int cCnt = s.nextInt();
@@ -166,7 +164,7 @@ Window.alert("DBG: http request error: " + e);
             }
             classFinder.hay(index.allClasses);
             packageFinder.hay(index.allPackages);
-            reportTime("parsing", timeLabelA, afterFetch, System.currentTimeMillis());
+            reportTime("parsing", timeLabels[1], afterFetch, System.currentTimeMillis());
             find(findBox.getText());
           }
         }
@@ -200,15 +198,16 @@ Window.alert("DBG: http request error: " + e);
     packagesPanel.clear();
     packagesPanel.add(new HTML("<h2>Packages</h2>"));
     packagesMenuPanel.add(morePackagesButton);
-    reportTime("preparing", timeLabelC, start, System.currentTimeMillis());
-    reportMore(classFinder, classesPanel, classesMenuPanel);
-    reportMore(packageFinder, packagesPanel, packagesMenuPanel);
+    reportTime("preparing", timeLabels[2], start, System.currentTimeMillis());
+    reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[3]);
+    reportMore(packageFinder, packagesPanel, packagesMenuPanel, timeLabels[4]);
   }
 
   private void reportMore(
       Finder finder, 
       ComplexPanel resultPanel, 
-      Panel morePanel
+      Panel morePanel,
+      Label timeLabel
   ) {
     long start = System.currentTimeMillis();
     int toGet = Math.max(INITIAL_RESULT_COUNT, resultPanel.getWidgetCount());
@@ -216,7 +215,7 @@ Window.alert("DBG: http request error: " + e);
     boolean more = finder.find(toGet, newResults);
     for (HTML h : newResults) resultPanel.add(h);
     if (!more) morePanel.clear();
-    reportTime("searching", timeLabelD, start, System.currentTimeMillis());
+    reportTime("searching", timeLabel, start, System.currentTimeMillis());
   }
 
   private void reportTime(String action, Label target, long a, long b) {
