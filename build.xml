@@ -76,7 +76,7 @@
       <jvmarg value="-Xmx256M"/>
       <arg value="-noserver"/>
       <arg value="-startupUrl"/>
-      <arg value="http://localhost:8080/ui/Main.html"/>
+      <arg value="http://localhost:8080/"/>
       <!-- Additional arguments like -style PRETTY or -logLevel DEBUG -->
       <arg value="javaapireader.Main"/>
     </java>

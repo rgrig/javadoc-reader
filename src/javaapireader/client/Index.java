@@ -1,12 +1,17 @@
 package javaapireader.client;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import com.google.gwt.user.client.Window;
 
 /** A structure holding the index of a javadoc. */
 public final class Index {
-  // TODO: How should this be synched with the server?
-  public static final int RECENT_SIZE = 100;
+  public static final int RECENT_SIZE = 200;
 
   private String baseUrl;
 
@@ -22,42 +27,30 @@ public final class Index {
   public ArrayList<ClassUnit> allClasses = new ArrayList<ClassUnit>();
   public ArrayList<PackageUnit> allPackages = new ArrayList<PackageUnit>();
 
-  private ArrayList<ClassUnit> recentClasses = new ArrayList<ClassUnit>();
-  private int recentClassesEnd;
+  private Mru<ClassUnit> recentClasses = new Mru<ClassUnit>(RECENT_SIZE);
+  private Mru<PackageUnit> recentPackages = new Mru<PackageUnit>(RECENT_SIZE);
 
   public Index(String baseUrl) {
-    for (int i = 0; i < RECENT_SIZE; ++i) recentClasses.add(null);
     this.baseUrl = baseUrl;
   }
 
-  public String url() {
+  public String url() { 
     return baseUrl;
   }
 
-  public void addClass(String class_, boolean interface_, int packageIdx) {
-    allClasses.add(new ClassUnit(
-        baseUrl, 
-        allPackages.get(packageIdx),
-        class_,
-        interface_));
-  }
-
-  public void addPackage(String package_) {
-    allPackages.add(new PackageUnit(baseUrl, package_));
-  }
-
   public void addRecentClass(ClassUnit c) {
-    recentClasses.set(recentClassesEnd, c);
-    recentClassesEnd = (recentClassesEnd + 1) % RECENT_SIZE;
+    recentClasses.use(c);
   }
 
   public List<ClassUnit> recentClasses() {
-    assert false : "todo, order by how often they appear in history";
-    return null;
+    return recentClasses.top();
+  }
+
+  public void addRecentPackage(PackageUnit p) {
+    recentPackages.use(p);
   }
 
   public List<PackageUnit> recentPackages() {
-    assert false : "todo, order by how often they appear in history";
-    return null;
+    return recentPackages.top();
   }
 }

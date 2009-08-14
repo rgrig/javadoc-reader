@@ -1,5 +1,6 @@
 package javaapireader.client;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -8,7 +9,7 @@ import com.google.gwt.user.client.ui.HTML;
 
 /** Implements the searching logic. That means it is responsible
     for interpreting the search string. */
-public class Finder {
+public class Finder<T extends Unit> {
   // Avoiding to build RegExp every time shaves of about 20% of
   // the matching time, so it's probably a good idea to use this
   // instead of String.matches(). The javascript implementation
@@ -25,8 +26,8 @@ public class Finder {
     }-*/;
   }
 
-  private List<? extends Unit> hay;
-  private Iterator<? extends Unit> iterator;
+  private List<T> hay;
+  private Iterator<T> iterator;
   private Unit leftOver;
   private Matcher m = new Matcher();
 
@@ -36,11 +37,15 @@ public class Finder {
     m.regex(needle);
   }
 
-  public void hay(List<? extends Unit> hay) {
+  public void hay(List<T> hay) {
     assert hay != null;
     this.hay = hay;
     iterator = hay.iterator();
     leftOver = null;
+  }
+
+  public List<T> hay() { 
+    return new ArrayList<T>(hay); 
   }
 
   /** 

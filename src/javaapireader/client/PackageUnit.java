@@ -1,15 +1,19 @@
 package javaapireader.client;
 
 import com.google.gwt.user.client.ui.HTML;
+import com.google.gwt.event.dom.client.ClickEvent;
+import com.google.gwt.event.dom.client.ClickHandler;
 
-public class PackageUnit implements Unit {
-  private String baseUrl;
+public class PackageUnit extends Unit<PackageUnit> {
   private String package_;
 
-  public PackageUnit(String baseUrl, String package_) {
+  public PackageUnit(
+      String package_,
+      Index index,
+      Finder<PackageUnit> finder
+  ) {
+    super(index, finder);
     assert package_ != null;
-    assert baseUrl != null;
-    this.baseUrl = baseUrl;
     this.package_ = package_;
   }
 
@@ -22,6 +26,13 @@ public class PackageUnit implements Unit {
           "\" target=\"classFrame\">" +
           package_ +
           "</a><br>");
+      link.addClickHandler(new ClickHandler() {
+        @Override public void onClick(ClickEvent event) {
+          touch("2" + package_);
+          index().addRecentPackage(PackageUnit.this);
+          finder().hay(index().recentPackages());
+        }
+      });
     }
     return link;
   }
@@ -29,11 +40,11 @@ public class PackageUnit implements Unit {
   private String packageUrlBase;
   public String packageUrlBase() {
     if (packageUrlBase == null)
-      packageUrlBase = baseUrl + "/" + package_.replace('.', '/');
+      packageUrlBase = url() + "/" + package_.replace('.', '/');
     return packageUrlBase;
   }
 
-  public String name() {
+  @Override public String name() {
     return package_;
   }
 
@@ -41,5 +52,15 @@ public class PackageUnit implements Unit {
   @Override public String rep() {
     if (rep == null) rep = package_.toLowerCase();
     return rep;
+  }
+
+  @Override public int hashCode() {
+    return url().hashCode() ^ package_.hashCode();
+  }
+
+  @Override public boolean equals(Object o) {
+    if (!(o instanceof PackageUnit)) return false;
+    PackageUnit pu = (PackageUnit) o;
+    return url().equals(pu.url()) && package_.equals(pu.package_);
   }
 }

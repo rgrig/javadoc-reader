@@ -1,6 +1,9 @@
 package javaapireader.client;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 import com.google.gwt.core.client.EntryPoint;
@@ -13,6 +16,9 @@ import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
 
 public class Main implements EntryPoint {
+  private static String uid; // who am i?
+  public static String uid() { return uid; }
+
   // some UI elements
   private final TextBox findBox = new TextBox();
   private final Frame classFrame = new Frame();
@@ -26,14 +32,17 @@ public class Main implements EntryPoint {
 
   // performance-related
   private static final int INITIAL_RESULT_COUNT = 20;
-  private static final int TIME_LABELS_COUNT = 5;
+  private static final int TIME_LABELS_COUNT = 6;
   private long startSetUrl;
   private final Label[] timeLabels = new Label[TIME_LABELS_COUNT];
 
   // the result of the last search
   private Index index;
-  private Finder packageFinder = new Finder();
-  private Finder classFinder = new Finder();
+  private Finder<PackageUnit> workingSetPackageFinder = 
+      new Finder<PackageUnit>();
+  private Finder<ClassUnit> workingSetClassFinder = new Finder<ClassUnit>();
+  private Finder<PackageUnit> packageFinder = new Finder<PackageUnit>();
+  private Finder<ClassUnit> classFinder = new Finder<ClassUnit>();
 
   /** Entry point. */
   public void onModuleLoad() {
@@ -61,7 +70,7 @@ public class Main implements EntryPoint {
       timeLabels[i] = new Label();
       statisticsPanel.add(timeLabels[i]);
     }
-    leftPanel.add(statisticsPanel); // for release, comment this line
+    leftPanel.add(statisticsPanel); // for LIVE version, comment this line
     RootPanel.get().add(leftPanel);
 
     findBox.setFocus(true);
@@ -132,6 +141,75 @@ Window.alert("DBG: Bad url " + url);
       url = url.substring(0, i);
     }
     index = new Index(url);
+    overviewPanel.clear();
+    overviewPanel.add(new HTML(
+        "<a href=\"" + index.url() + "/overview-summary.html" +
+        "\" target=\"classFrame\">Overview</a>"));
+    getWorkingSet();
+    getAllUnits();
+  }
+
+  private void getWorkingSet() {
+    uid = Cookies.getCookie("java-api.uid");
+    String url = "/workingset?";
+    if (uid != null) url += "uid=" + uid + "&";
+    url += "url=" + index.url();
+    RequestBuilder rb = new RequestBuilder(RequestBuilder.GET, url);
+    rb.setHeader("Accept-Encoding", "gzip");
+    rb.setHeader("User-Agent", "gzip");
+    try {
+      rb.sendRequest(null, new RequestCallback() {
+        @Override public void onError(Request r, Throwable e) {
+Window.alert("DBG: http request error: " + e);
+        }
+
+        @Override public void onResponseReceived(Request request, Response response) {
+          if (response.getStatusCode() == 200) {
+            Scanner s = new Scanner(response.getText());
+            Cookies.setCookie("java-api.uid", uid = s.next());
+            int cCnt = s.nextInt();
+            for (int i = 0; i < cCnt; ++i) {
+              boolean isInterface = false;
+              String unitName = s.next();
+              switch (unitName.charAt(0)) {
+                case '1': // an interface
+                  isInterface = true;
+                case '0': // a class
+                  int split = unitName.indexOf('/');
+                  PackageUnit p = new PackageUnit(
+                      unitName.substring(1, split),
+                      index,
+                      null); // this should never be clicked
+                  index.addRecentClass(new ClassUnit(
+                      p, 
+                      unitName.substring(split+1, unitName.length()), 
+                      isInterface,
+                      index,
+                      workingSetClassFinder));
+                  break;
+                case '2': // a package
+                  index.addRecentPackage(new PackageUnit(
+                      unitName.substring(1, unitName.length()),
+                      index,
+                      workingSetPackageFinder));
+                  break;
+                default: // huh?
+Window.alert("DBG: error pasing unit: " + unitName);
+              }
+            }
+            workingSetClassFinder.hay(index.recentClasses());
+            workingSetPackageFinder.hay(index.recentPackages());
+            reportTime("fetching and parsing working set", timeLabels[0], startSetUrl, System.currentTimeMillis());
+            find(findBox.getText());
+          }
+        }
+      });
+    } catch (RequestException e) {
+Window.alert("DBG: RequestException: " + e);
+    }
+  }
+
+  private void getAllUnits() {
     RequestBuilder rb = new RequestBuilder(
         RequestBuilder.GET,
         "/fetch?url=" + index.url());
@@ -146,25 +224,28 @@ Window.alert("DBG: http request error: " + e);
         @Override public void onResponseReceived(Request request, Response response) {
           if (response.getStatusCode() == 200) {
             long afterFetch = System.currentTimeMillis();
-            overviewPanel.clear();
-            overviewPanel.add(new HTML(
-                "<a href=\"" + index.url() + "/overview-summary.html" +
-                "\" target=\"classFrame\">Overview</a>"));
-            reportTime("fetching", timeLabels[0], startSetUrl, afterFetch);
+            reportTime("fetching all", timeLabels[1], startSetUrl, afterFetch);
             Scanner s = new Scanner(response.getText());
             int pCnt = s.nextInt();
             int cCnt = s.nextInt();
-            for (int i = 0; i < pCnt; ++i)
-              index.addPackage(s.next());
+            for (int i = 0; i < pCnt; ++i) {
+              index.allPackages.add(new PackageUnit(
+                  s.next(), index, workingSetPackageFinder));
+            }
             for (int i = 0; i < cCnt; ++i) {
               String className = s.next();
               boolean isInterface = s.nextBool();
               int packageIdx = s.nextInt();
-              index.addClass(className, isInterface, packageIdx);
+              index.allClasses.add(new ClassUnit(
+                  index.allPackages.get(packageIdx),
+                  className,
+                  isInterface,
+                  index,
+                  workingSetClassFinder));
             }
             classFinder.hay(index.allClasses);
             packageFinder.hay(index.allPackages);
-            reportTime("parsing", timeLabels[1], afterFetch, System.currentTimeMillis());
+            reportTime("parsing", timeLabels[2], afterFetch, System.currentTimeMillis());
             find(findBox.getText());
           }
         }
@@ -172,35 +253,60 @@ Window.alert("DBG: http request error: " + e);
     } catch (RequestException e) { }
   }
 
+  private <T extends Unit> void displayWorkingSetTop(
+      Finder<T> finder, 
+      Panel panel
+  ) {
+    List<T> units = finder.hay();
+    int toDisplay = Math.min(units.size(), INITIAL_RESULT_COUNT);
+    List<T> topUnits = new ArrayList<T>();
+    Iterator<T> it = units.iterator();
+    while (topUnits.size() < toDisplay)
+      topUnits.add(it.next());
+    Collections.sort(topUnits, new Comparator<T>() {
+      @Override public int compare(T a, T b) {
+        return a.lowercaseName().compareTo(b.lowercaseName());
+      }
+    });
+    for (T u : topUnits) panel.add(u.link());
+  }
+
   private void find(String needle) {
     long start = System.currentTimeMillis();
-    needle = needle.toLowerCase();
-    boolean hasDot = false;
-    boolean hasSpecial = false;
-    for (int i = 0; i < needle.length(); ++i) {
-      hasDot |= needle.charAt(i) == '.';
-      hasSpecial |= 
-          !Character.isLetterOrDigit(needle.charAt(i)) && 
-          needle.charAt(i) != '.';
-    }
-    if (hasSpecial)
-      needle = needle.replaceAll("\\.", "\\.").replaceAll("\\*", ".*");
-    else if (hasDot)
-      needle = ".*" + needle.replaceAll("\\.", "\\\\.") + ".*";
-    else
-      needle = ".*" + needle + "[^\\.]*";
-    classFinder.needle(needle);
-    packageFinder.needle(needle);
-
     classesPanel.clear();
     classesPanel.add(new HTML("<h2>Classes</h2>"));
-    classesMenuPanel.add(moreClassesButton);
     packagesPanel.clear();
     packagesPanel.add(new HTML("<h2>Packages</h2>"));
-    packagesMenuPanel.add(morePackagesButton);
-    reportTime("preparing", timeLabels[2], start, System.currentTimeMillis());
-    reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[3]);
-    reportMore(packageFinder, packagesPanel, packagesMenuPanel, timeLabels[4]);
+
+    if (needle.equals("")) {
+      displayWorkingSetTop(workingSetClassFinder, classesPanel);
+      displayWorkingSetTop(workingSetPackageFinder, packagesPanel);
+      reportTime("identifying most used", timeLabels[3], start, System.currentTimeMillis());
+    } else {
+      needle = needle.toLowerCase();
+      boolean hasDot = false;
+      boolean hasSpecial = false;
+      for (int i = 0; i < needle.length(); ++i) {
+        hasDot |= needle.charAt(i) == '.';
+        hasSpecial |= 
+            !Character.isLetterOrDigit(needle.charAt(i)) && 
+            needle.charAt(i) != '.';
+      }
+      if (hasSpecial)
+        needle = needle.replaceAll("\\.", "\\.").replaceAll("\\*", ".*");
+      else if (hasDot)
+        needle = ".*" + needle.replaceAll("\\.", "\\\\.") + ".*";
+      else
+        needle = ".*" + needle + "[^\\.]*";
+      classFinder.needle(needle);
+      packageFinder.needle(needle);
+
+      classesMenuPanel.add(moreClassesButton);
+      packagesMenuPanel.add(morePackagesButton);
+      reportTime("preparing", timeLabels[3], start, System.currentTimeMillis());
+      reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[4]);
+      reportMore(packageFinder, packagesPanel, packagesMenuPanel, timeLabels[5]);
+    }
   }
 
   private void reportMore(
