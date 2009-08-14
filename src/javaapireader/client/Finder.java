@@ -9,15 +9,31 @@ import com.google.gwt.user.client.ui.HTML;
 /** Implements the searching logic. That means it is responsible
     for interpreting the search string. */
 public class Finder {
+  // Avoiding to build RegExp every time shaves of about 20% of
+  // the matching time, so it's probably a good idea to use this
+  // instead of String.matches(). The javascript implementation
+  // is stollen from there anyway.
+  private static class Matcher {
+    private Object regex;
+    public native void regex(String r) /*-{
+      regex = new RegExp(r);
+    }-*/;
+
+    public native boolean matches(String h) /*-{
+      var m = regex.exec(h);
+      return (m == null)? false : (h == m[0]);
+    }-*/;
+  }
+
   private List<? extends Unit> hay;
-  private String needle;
   private Iterator<? extends Unit> iterator;
   private Unit leftOver;
+  private Matcher m = new Matcher();
 
   public void needle(String needle) {
-    this.needle = needle;
     if (hay != null) iterator = hay.iterator();
     leftOver = null;
+    m.regex(needle);
   }
 
   public void hay(List<? extends Unit> hay) {
@@ -43,7 +59,7 @@ public class Finder {
     }
     while (found < max && iterator.hasNext()) {
       Unit u = iterator.next();
-      if (u.rep().matches(needle)) {
+      if (m.matches(u.rep())) {
         ++found;
         result.add(u.link());
       }
@@ -51,7 +67,7 @@ public class Finder {
     leftOver = null;
     while (iterator.hasNext()) {
       Unit u = iterator.next();
-      if (u.rep().matches(needle)) {
+      if (m.matches(u.rep())) {
         leftOver = u;
         return true;
       }
