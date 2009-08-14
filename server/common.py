@@ -39,9 +39,40 @@ class Usage(db.Model):
 class UsageCounter(db.Model):
   uid = db.StringProperty(required=True)
   url = db.StringProperty(required=True)
-  last_slot = db.IntegerProperty(required=True)
+  next_slot = db.IntegerProperty(required=True)
 
 class WorkingSetPage(webapp.RequestHandler):
+  def getClasses(self, uid, url):
+    usages = Usage.all().filter(
+        'uid =', uid).filter('url =', url).fetch(HISTORY_SIZE)
+    classes = []
+    for u in usages:
+      if u.cls:
+        classes += [u.cls]
+    counters = UsageCounter.all().filter(
+        'uid =', uid).filter('url =', url).fetch(1) 
+    if (len(counters) > 0):
+      ns = counters[0].next_slot
+      classes = classes[ns:] + classes[:ns]
+    return classes
+
+  def touchClass(self, uid, url, cls):
+    counters = UsageCounter.all().filter(
+        'uid =', uid).filter('url =', url).fetch(1)
+    if len(counters) == 0:
+      counters.append(UsageCounter(uid=uid, url=url, next_slot=0))
+    slot = counters[0].next_slot
+    usages = Usage.all().filter(
+        'uid =', uid).filter('url =', url).filter('slot =', slot).fetch(1)
+    if len(usages) == 0:
+      usages.append(Usage(uid=uid, url=url, slot=slot, cls=cls))
+    else:
+      usages[0].cls = cls
+    usages[0].put()
+    counters[0].next_slot = (slot + 1) % HISTORY_SIZE
+    counters[0].put()
+    self.response.out.write('touch uid=%s url=%s cls=%s\n' % (uid, url, cls))
+
   def get(self):
     self.response.headers['Content-Type'] = 'text/plain'
     url = self.request.get('url')
@@ -52,58 +83,26 @@ class WorkingSetPage(webapp.RequestHandler):
       self.response.set_status(400, 'some required params are missing')
       return
     if cls:
-      # todo: update user ALL (put code in separate method)
-      if not pkg: pkg = ''
-      qc = UsageCounter.all().filter('url =', url).filter('uid =', uid)
-      uc = qc.fetch(1)
-      if len(uc) != 1:
-        self.response.out.write('unknown uid/url combination')
-        self.response.set_status(400, 'unknown uid/url combination')
-        return
-      qu = Usage.all().filter('uid =',uid).filter('url =',url).filter('slot =',uc[0].last_slot)
-      u = qu.fetch(1)
-      if len(u) != 1:
-        self.response.out.write('this slot should exist')
-        self.response.set_status(500, 'this slot should exist')
-        return
-      u[0].cls = pkg + '/' + cls
-      u[0].put()
-      uc[0].last_slot = (uc[0].last_slot + 1) % HISTORY_SIZE
-      uc[0].put()
-      self.response.out.write('touch ' + cls)
+      if not pkg: 
+        pkg = ''
+      cls = pkg + '/' + cls
+      self.touchClass(uid, url, cls)
+      self.touchClass('ALL', url, cls)
     else:
       if uid:
-        qu = Usage.all().filter('uid =', uid)
-        us = qu.fetch(HISTORY_SIZE)
-        cnt = 0
-        for u in us:
-          if u.cls:
-            cnt += 1
-        self.response.out.write('%s\n%d\n' % (uid, cnt))
-        for u in us:
-          if u.cls:
-            self.response.out.write(u.cls + '\n')
+        classes = self.getClasses(uid, url)
+        if len(classes) < HISTORY_SIZE:
+          more_classes = self.getClasses('ALL', url)
+          classes = (classes + more_classes)[:HISTORY_SIZE]
+        self.response.out.write('%s\n%d\n' % (uid, len(classes)))
+        for c in classes:
+          self.response.out.write(c + '\n')
       else:
         uid = rand()
-        for i in range(HISTORY_SIZE):
-          us = Usage(url=url,uid=uid,slot=i)
-          us.put()
-        uc = UsageCounter(url=url,uid=uid,last_slot=0)
-        uc.put()
-        q = Usage.all().filter('uid =','ALL')
-        rs = q.fetch(HISTORY_SIZE)
-        if len(rs) != HISTORY_SIZE:
-          self.response.out.write('user ALL is not there?\n' + str(rs))
-          self.response.set_status(500, 'user ALL is not there?')
-          return
-        cnt = 0
-        for r in rs: 
-          if r.cls: 
-            cnt = cnt + 1
-        self.response.out.write('%s\n%d\n' % (uid, cnt))
-        for r in rs: 
-          if r.cls:
-            self.response.out.write(r.cls + '\n')
+        classes = self.getClasses('ALL', url)
+        self.response.out.write('%s\n%d\n' % (uid, len(classes)))
+        for c in classes: 
+          self.response.out.write(c + '\n')
 
 application = webapp.WSGIApplication(
                                      [('/workingset', WorkingSetPage)],
