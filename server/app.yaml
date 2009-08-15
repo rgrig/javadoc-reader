@@ -1,0 +1,20 @@
+application: java-api
+version: dev
+runtime: python
+api_version: 1
+
+#default_expiration: "7d"  # to uncomment when going live
+
+handlers:
+- url: /
+  static_files: ui/Main.html
+  upload: ui/*
+
+- url: /ui
+  static_dir: ui
+
+- url: /fetch
+  script: fetch.py
+
+- url: /workingset
+  script: common.py
