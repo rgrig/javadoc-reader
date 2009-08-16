@@ -2,6 +2,7 @@ package javaapireader.client;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -167,7 +168,10 @@ Window.alert("DBG: http request error: " + e);
         @Override public void onResponseReceived(Request request, Response response) {
           if (response.getStatusCode() == 200) {
             Scanner s = new Scanner(response.getText());
-            Cookies.setCookie("java-api.uid", uid = s.next());
+            Cookies.setCookie(
+              "java-api.uid", 
+              uid = s.next(),
+              new Date(System.currentTimeMillis() + 1000l * 60l * 60l * 24l * 365l));
             int cCnt = s.nextInt();
             for (int i = 0; i < cCnt; ++i) {
               boolean isInterface = false;
