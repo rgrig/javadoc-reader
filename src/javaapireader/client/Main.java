@@ -40,11 +40,6 @@ public class Main implements EntryPoint {
 
   // the result of the last search
   private Index index;
-  private Finder<PackageUnit> workingSetPackageFinder = 
-      new Finder<PackageUnit>();
-  private Finder<ClassUnit> workingSetClassFinder = new Finder<ClassUnit>();
-  private Finder<PackageUnit> packageFinder = new Finder<PackageUnit>();
-  private Finder<ClassUnit> classFinder = new Finder<ClassUnit>();
 
   /** Entry point. */
   public void onModuleLoad() {
@@ -114,16 +109,6 @@ public class Main implements EntryPoint {
     BoxButtonHandler setUrlHandler = new BoxButtonHandler(urlBox, urlButton, 0) {
       @Override public void go(String s) { setUrl(s); }
     };
-    moreClassesButton.addClickHandler(new ClickHandler() {
-      @Override public void onClick(ClickEvent e) { 
-        reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[3]); 
-      }
-    });
-    morePackagesButton.addClickHandler(new ClickHandler() {
-      @Override public void onClick(ClickEvent e) {
-        reportMore(packageFinder, packagesPanel, packagesMenuPanel, timeLabels[4]);
-      }
-    });
 
     // initialize content for the default javadoc
     setUrl(urlBox.getText());
@@ -172,38 +157,7 @@ Window.alert("DBG: http request error: " + e);
               "java-api.uid", 
               uid = s.next(),
               new Date(System.currentTimeMillis() + 1000l * 60l * 60l * 24l * 365l));
-            int cCnt = s.nextInt();
-            for (int i = 0; i < cCnt; ++i) {
-              boolean isInterface = false;
-              String unitName = s.next();
-              switch (unitName.charAt(0)) {
-                case '1': // an interface
-                  isInterface = true;
-                case '0': // a class
-                  int split = unitName.indexOf('/');
-                  PackageUnit p = new PackageUnit(
-                      unitName.substring(1, split),
-                      index,
-                      null); // this should never be clicked
-                  index.addRecentClass(new ClassUnit(
-                      p, 
-                      unitName.substring(split+1, unitName.length()), 
-                      isInterface,
-                      index,
-                      workingSetClassFinder));
-                  break;
-                case '2': // a package
-                  index.addRecentPackage(new PackageUnit(
-                      unitName.substring(1, unitName.length()),
-                      index,
-                      workingSetPackageFinder));
-                  break;
-                default: // huh?
-Window.alert("DBG: error parsing unit: " + unitName);
-              }
-            }
-            workingSetClassFinder.hay(index.recentClasses());
-            workingSetPackageFinder.hay(index.recentPackages());
+            assert false : "todo: parsing of working set: use different format";
             reportTime("fetching and parsing working set", timeLabels[0], startSetUrl, System.currentTimeMillis());
             find(findBox.getText());
           }
@@ -231,49 +185,13 @@ Window.alert("DBG: http request error: " + e);
             long afterFetch = System.currentTimeMillis();
             reportTime("fetching all", timeLabels[1], startSetUrl, afterFetch);
             Scanner s = new Scanner(response.getText());
-            int pCnt = s.nextInt();
-            int cCnt = s.nextInt();
-            for (int i = 0; i < pCnt; ++i) {
-              index.allPackages.add(new PackageUnit(
-                  s.next(), index, workingSetPackageFinder));
-            }
-            for (int i = 0; i < cCnt; ++i) {
-              String className = s.next();
-              boolean isInterface = s.nextBool();
-              int packageIdx = s.nextInt();
-              index.allClasses.add(new ClassUnit(
-                  index.allPackages.get(packageIdx),
-                  className,
-                  isInterface,
-                  index,
-                  workingSetClassFinder));
-            }
-            classFinder.hay(index.allClasses);
-            packageFinder.hay(index.allPackages);
+            assert false : "todo: parsing of index";
             reportTime("parsing", timeLabels[2], afterFetch, System.currentTimeMillis());
             find(findBox.getText());
           }
         }
       });
     } catch (RequestException e) { }
-  }
-
-  private <T extends Unit> void displayWorkingSetTop(
-      Finder<T> finder, 
-      Panel panel
-  ) {
-    List<T> units = finder.hay();
-    int toDisplay = Math.min(units.size(), INITIAL_RESULT_COUNT);
-    List<T> topUnits = new ArrayList<T>();
-    Iterator<T> it = units.iterator();
-    while (topUnits.size() < toDisplay)
-      topUnits.add(it.next());
-    Collections.sort(topUnits, new Comparator<T>() {
-      @Override public int compare(T a, T b) {
-        return a.lowercaseName().compareTo(b.lowercaseName());
-      }
-    });
-    for (T u : topUnits) panel.add(u.link());
   }
 
   private void find(String needle) {
@@ -286,8 +204,7 @@ Window.alert("DBG: http request error: " + e);
     if (needle.equals("")) {
       classesMenuPanel.clear();
       packagesMenuPanel.clear();
-      displayWorkingSetTop(workingSetClassFinder, classesPanel);
-      displayWorkingSetTop(workingSetPackageFinder, packagesPanel);
+      assert false : "todo";
       reportTime("identifying most used", timeLabels[3], start, System.currentTimeMillis());
     } else {
       needle = needle.toLowerCase();
@@ -305,30 +222,9 @@ Window.alert("DBG: http request error: " + e);
         needle = needle.replaceAll("\\.", "\\\\.");
       else
         needle = needle + "[^\\.]*$";
-      classFinder.needle(needle);
-      packageFinder.needle(needle);
-
-      classesMenuPanel.add(moreClassesButton);
-      packagesMenuPanel.add(morePackagesButton);
       reportTime("preparing", timeLabels[3], start, System.currentTimeMillis());
-      reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[4]);
-      reportMore(packageFinder, packagesPanel, packagesMenuPanel, timeLabels[5]);
+      assert false : "todo: the actual search";
     }
-  }
-
-  private void reportMore(
-      Finder finder, 
-      ComplexPanel resultPanel, 
-      Panel morePanel,
-      Label timeLabel
-  ) {
-    long start = System.currentTimeMillis();
-    int toGet = Math.max(INITIAL_RESULT_COUNT, resultPanel.getWidgetCount());
-    List<HTML> newResults = new ArrayList<HTML>();
-    boolean more = finder.find(toGet, newResults);
-    for (HTML h : newResults) resultPanel.add(h);
-    if (!more) morePanel.clear();
-    reportTime("searching", timeLabel, start, System.currentTimeMillis());
   }
 
   private void reportTime(String action, Label target, long a, long b) {
