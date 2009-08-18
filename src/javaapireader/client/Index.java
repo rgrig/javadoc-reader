@@ -8,14 +8,27 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.gwt.user.client.Window;
+import com.google.gwt.user.client.ui.HTML;
 
 /** A structure holding the index of a javadoc. */
 public final class Index {
+  public static class Unit {
+    public String type;
+    public Unit parent;
+    public int rep;     // index in allUnits
+    public int javadoc; // index in javadocs
+  }
+
+  public static class RecentUnit {
+    public String javadoc;
+    public String type;
+    public String rep;
+  }
+
   public static final int RECENT_SIZE = 200;
     // TODO(radugrigore): make configurable
 
-  private String baseUrl;
-
+  public String[] javadocs;
   public String unitsBuffer; 
     // contains all units' canonical names, concatenated in
     // lexicografic order: AaBbCc...
@@ -23,11 +36,17 @@ public final class Index {
   public Unit[] allUnits;
   public Unit[] recentUnits;
 
-  public Index(String baseUrl) {
-    this.baseUrl = baseUrl;
+  public void needle(String needle) {
   }
 
-  public String url() { 
-    return baseUrl;
+  public HTML[] getMoreResults(int maxResults) {
+    return null;
+  }
+
+  public HTML[] searchRecent(String needle, int maxResults) {
+    return null;
+  }
+
+  public void use(RecentUnit ru) {
   }
 }

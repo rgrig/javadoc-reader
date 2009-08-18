@@ -12,6 +12,7 @@ import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.dom.client.Element;
 import com.google.gwt.event.dom.client.*;
+import com.google.gwt.event.dom.client.KeyCodes;
 import com.google.gwt.http.client.*;
 import com.google.gwt.user.client.*;
 import com.google.gwt.user.client.rpc.AsyncCallback;
@@ -23,14 +24,7 @@ public class Main implements EntryPoint {
 
   // some UI elements
   private final TextBox findBox = new TextBox();
-  private final Frame classFrame = new Frame();
-  private final VerticalPanel overviewPanel = new VerticalPanel();
-  private final VerticalPanel classesPanel = new VerticalPanel();
-  private final HorizontalPanel classesMenuPanel = new HorizontalPanel();
-  private final Button moreClassesButton = new Button("more");
-  private final VerticalPanel packagesPanel = new VerticalPanel();
-  private final HorizontalPanel packagesMenuPanel = new HorizontalPanel();
-  private final Button morePackagesButton = new Button("more");
+  private final VerticalPanel resultsPanel = new VerticalPanel();
 
   // performance-related
   private static final int INITIAL_RESULT_COUNT = 20;
@@ -44,23 +38,12 @@ public class Main implements EntryPoint {
   /** Entry point. */
   public void onModuleLoad() {
     // set up the layout
-    final TextBox urlBox = new TextBox();
-    urlBox.setText("http://java.sun.com/javase/6/docs/api/");
-    final Button urlButton = new Button("set");
-    final HorizontalPanel urlPanel = new HorizontalPanel();
-    urlPanel.add(urlBox);
-    urlPanel.add(urlButton);
     final HorizontalPanel findPanel = new HorizontalPanel();
     findBox.setWidth("230px");
     findPanel.add(findBox);
     final VerticalPanel leftPanel = new VerticalPanel();
-    leftPanel.add(urlPanel);
     leftPanel.add(findPanel);
-    leftPanel.add(overviewPanel);
-    leftPanel.add(classesPanel);
-    leftPanel.add(classesMenuPanel);
-    leftPanel.add(packagesPanel);
-    leftPanel.add(packagesMenuPanel);
+    leftPanel.add(resultsPanel);
     final VerticalPanel statisticsPanel = new VerticalPanel();
     statisticsPanel.add(new HTML("<h3>Statistics</h3>"));
     for (int i = 0; i < TIME_LABELS_COUNT; ++i) {
@@ -71,76 +54,40 @@ public class Main implements EntryPoint {
     RootPanel.get().add(leftPanel);
 
     findBox.setFocus(true);
-
-    // set up the event handlers
-    abstract class BoxButtonHandler implements ClickHandler, KeyUpHandler {
-      private String lastValue;
-      final private TextBox box;
-      final private int timeout;
-      final private Timer timer = new Timer() {
-        @Override public void run() {
-          guardedGo();
-        }
-      };
-      public BoxButtonHandler(TextBox box, Button button, int timeout) {
-        box.addKeyUpHandler(this);
-        if (button != null) button.addClickHandler(this);
-        this.box = box;
-        this.timeout = timeout;
-      }
-      @Override public void onClick(ClickEvent event) { callGo(); }
+    findBox.addKeyUpHandler(new KeyUpHandler() {
       @Override public void onKeyUp(KeyUpEvent event) {
-        if (event.getNativeKeyCode() == KeyCodes.KEY_ENTER) callGo();
-        else if (timeout > 0) {
-          timer.cancel();
-          timer.schedule(timeout);
-        }
+        if (event.getNativeKeyCode() == KeyCodes.KEY_ENTER)
+          find(findBox.getText());
       }
-      private void guardedGo() {
-        if (box.getText().equals(lastValue)) return;
-        callGo();
-      }
-      private void callGo() { go(lastValue = box.getText()); }
-      public abstract void go(String s);
-    }
-    BoxButtonHandler findHandler = new BoxButtonHandler(findBox, null, 200) {
-      @Override public void go(String s) { find(s); }
-    };
-    BoxButtonHandler setUrlHandler = new BoxButtonHandler(urlBox, urlButton, 0) {
-      @Override public void go(String s) { setUrl(s); }
-    };
+    });
 
-    // initialize content for the default javadoc
-    setUrl(urlBox.getText());
+    loadIndex(
+        // TODO(radugrigore): make configurable
+        "http://java.sun.com/javase/6/docs/api",
+        "http://google-web-toolkit.googlecode.com/svn/javadoc/1.6",
+        "http://google-collections.googlecode.com/svn/trunk/javadoc",
+        "http://help.eclipse.org/galileo/nftopic/org.eclipse.platform.doc.isv/reference/api",
+        "http://bits.netbeans.org/dev/javadoc"
+    );
   }
 
   // ask for an index for the javadoc at |url|
-  private void setUrl(String url) {
+  private void loadIndex(String... javadocs) {
     startSetUrl = System.currentTimeMillis();
-    url = URL.encode(url);
-    int i;
-    if (url.endsWith("/") || url.endsWith(".html")) {
-      i = url.lastIndexOf('/');
-      if (i == -1) {
-Window.alert("DBG: Bad url " + url);
-        return;
-      }
-      url = url.substring(0, i);
-    }
-    index = new Index(url);
-    overviewPanel.clear();
-    overviewPanel.add(new HTML(
-        "<a href=\"" + index.url() + "/overview-summary.html" +
-        "\" target=\"classFrame\">Overview</a>"));
-    getWorkingSet();
-    getAllUnits();
+    findBox.setText("");
+    index = new Index();
+    String query = "";
+    for (int i = 0; i < javadocs.length; ++i) 
+      query += "&url" + i + "=" + javadocs[i];
+    getWorkingSet(query);
+    getAllUnits(query);
   }
 
-  private void getWorkingSet() {
+  private void getWorkingSet(String javadocs) {
     uid = Cookies.getCookie("java-api.uid");
     String url = "/workingset?";
-    if (uid != null) url += "uid=" + uid + "&";
-    url += "url=" + index.url();
+    if (uid != null) url += "uid=" + uid;
+    url += javadocs;
     RequestBuilder rb = new RequestBuilder(RequestBuilder.GET, url);
     rb.setHeader("Accept-Encoding", "gzip");
     rb.setHeader("User-Agent", "gzip");
@@ -168,10 +115,10 @@ Window.alert("DBG: RequestException: " + e);
     }
   }
 
-  private void getAllUnits() {
+  private void getAllUnits(String javadocs) {
     RequestBuilder rb = new RequestBuilder(
         RequestBuilder.GET,
-        "/fetch?url=" + index.url());
+        "/fetch?" + javadocs);
     rb.setHeader("Accept-Encoding", "gzip");
     rb.setHeader("User-Agent", "gzip");
     try {
@@ -187,7 +134,6 @@ Window.alert("DBG: http request error: " + e);
             Scanner s = new Scanner(response.getText());
             assert false : "todo: parsing of index";
             reportTime("parsing", timeLabels[2], afterFetch, System.currentTimeMillis());
-            find(findBox.getText());
           }
         }
       });
@@ -196,14 +142,9 @@ Window.alert("DBG: http request error: " + e);
 
   private void find(String needle) {
     long start = System.currentTimeMillis();
-    classesPanel.clear();
-    classesPanel.add(new HTML("<h2>Classes</h2>"));
-    packagesPanel.clear();
-    packagesPanel.add(new HTML("<h2>Packages</h2>"));
+    resultsPanel.clear();
 
     if (needle.equals("")) {
-      classesMenuPanel.clear();
-      packagesMenuPanel.clear();
       assert false : "todo";
       reportTime("identifying most used", timeLabels[3], start, System.currentTimeMillis());
     } else {
@@ -229,9 +170,5 @@ Window.alert("DBG: http request error: " + e);
 
   private void reportTime(String action, Label target, long a, long b) {
     target.setText(action + " took " + (b-a) + "ms");
-  }
-
-  private static boolean contains(String hay, String needle) {
-    return hay.toLowerCase().matches(".*" + needle + ".*");
   }
 }

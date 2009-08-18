@@ -1,46 +1,38 @@
 package javaapireader.client;
 
-/** A very simple version of java.util.Scanner, which is not in GWT. */
+/** 
+  A very simple version of java.util.Scanner, which is not in GWT. 
+  For speed it makes the assumptions:
+   - there is exactly ONE whitespace character after each token
+   - integers are nonnegative decimals
+   - whitespace means ' ' or '\n'
+ */
 public class Scanner {
-  private final String s;
+  private String s;
   private int pos;
-  private String next;
 
   public Scanner(String s) { 
-    this.s = s; read();
+    this.s = s;
   }
 
-  public boolean hasNext() {
-    return next != null; 
+  public void skip(int cnt) {
+    pos += cnt;
   }
 
   public String next() { 
-    String r = next; 
-    read(); 
-    return r; 
+    char c;
+    int oldPos = pos;
+    while ((c = s.charAt(pos++)) != ' ' && c != '\n');
+    ++pos;
+    return s.substring(oldPos, pos - 1);
   }
 
-  // assumes that |next| contains a non-negative integer
   public int nextInt() {
+    char c;
     int r = 0;
-    for (int i = 0; i < next.length(); ++i)
-      r = 10 * r + (int) next.charAt(i) - (int) '0';
-    read();
+    while ((c = s.charAt(pos++)) != ' ' && c != '\n')
+      r = 10 * r + (int) c - (int) '0';
+    ++pos;
     return r;
-  }
-
-  public boolean nextBool() {
-    boolean r = !"0".equals(next);
-    read();
-    return r;
-  }
-
-  public void read() {
-    while (pos < s.length() && Character.isSpace(s.charAt(pos))) pos++;
-    if (pos == s.length()) { next = null; return; }
-    int end;
-    for (end = pos; end < s.length() && !Character.isSpace(s.charAt(end)); ++end);
-    next = s.substring(pos, end);
-    pos = end;
   }
 }

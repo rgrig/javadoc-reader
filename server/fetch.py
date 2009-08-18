@@ -1,16 +1,20 @@
 # This is responsible for indexing javadocs.
 #
 # Parameters:
-#   url = the base URL for the javadoc to index
-#   force = will not use memcache if this is set
+#   url1, url2, ..., urlN = the javadocs to index
+#   force = will not use memcache if this is set (to anything)
 #
 # The information is extracted from {url}/allclasses-frame.html
 # The index has (exactly) the format:
 # <size_of_buffer><NL>
 # <buffer>
+# <count_of_javadocs>
+# <javadoc_url><NL> <*>
 # <count_of_units><NL>
-# <unit_start><SPACE><unit_type><SPACE><unit_parent><NL>
+# <unit_start><SPACE><unit_type><SPACE><unit_parent>
+#     <SPACE><unit_javadoc><NL> <*>
 # <suffix_array_of_buffer><NL>
+# <debugging_info>
 #
 # The format is readable but rigid, so that parsing is fast.
 # The <buffer> contains the canonical names of all units
@@ -23,15 +27,9 @@
 # split the buffer in pieces while doing the initial parsing
 # since the <size_of_buffer> is given.
 #
-# Where in the buffer a certain unit can be found is given
-# by the index <unit_start>. The <unit_type>s are:
-#   ANNOTATION
-#   CLASS
-#   ENUM
-#   INTREFACE
-#   PACKAGE
-# a unit's parent is a 0-based index in the unit list, or '*'
-# if there is no parent.
+# Where in the buffer a certain unit can be found is given by the
+# index <unit_start>. A unit's parent is a 0-based index in the
+# unit list, or '*' if there is no parent.
 #
 # Finally, <suffix_array_of_buffer> is a <NL>-separated list
 # of indexes in <buffer>.
@@ -39,21 +37,23 @@
 # NOTE: We rely on the index being sent gzipped, so we don't try
 #       eliminate redundancy ourselves to minimize network time.
 
-from HTMLParser import HTMLParser
 from google.appengine.api import memcache
 from google.appengine.api import urlfetch
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
+from HTMLParser import HTMLParser
+from operator import indexOf
 from time import time
 
+# Does basic parsing of 'allclasses-frame.html'
 class ClassListParser(HTMLParser):
-  def __init__(self):
-    HTMLParser.__init__(self)
-    self.in_a = False
-    self.packages = set()
-    self.units = []
+  def process(self, html):
+    self.units = dict()
     self.package = ''
     self.type = ''
+    self.in_a = False
+    self.feed(html)
+    return self.units
 
   def handle_starttag(self, tag, attrs):
     if tag == 'a':
@@ -61,64 +61,90 @@ class ClassListParser(HTMLParser):
         if k == 'title':
           title = v.split()
           self.package = title[-1]
-          self.packages.add(self.package)
-          self.type = title[0].upper()
+          if self.package not in self.units:
+            self.units[self.package] = []
+          self.type = title[0]
       self.in_a = True 
       
   def handle_data(self, data):
     if self.in_a:
-      self.units += [(self.package + '/' + data, self.type)]
+      if self.package:
+        self.units[self.package] += [(data, self.type)]
       self.in_a = False
-    
-  def result(self):
-    # construct buffer
-    start_construct_buffer = time()
-    for p in self.packages:
-      self.units += [(p + '/', 'PACKAGE')]
-    self.units.sort()
-    idx = 0
-    idx_type = []
-    buffer = ''
-    for u in self.units:
-      idx_type += [(idx, u[1])]
-      idx += len(u[0]) + 1
-      buffer += u[0] + '\n'
-    stop_construct_buffer = time()
-
-    # construct the suffix array
-    sa = []
-
-    # format everything
-    r = str(len(buffer)) + '\n'
-    r += buffer
-    r += str(len(idx_type)) + '\n'
-    for it in idx_type:
-      r += str(it[0]) + ' ' + it[1] + '\n'
-    for s in sa:
-      r += str(s) + '\n'
-    r += 'construct buffer time: ' + str(stop_construct_buffer - start_construct_buffer) + '\n'
-    return r
 
 class MainPage(webapp.RequestHandler):
+  def index(self):
+    self.time['index'] = time()
+    self.units = []
+    self.javadocs = list(self.raw.keys())
+    self.javadocs.sort()
+    for jd, x in self.raw.items():
+      jdi = indexOf(self.javadocs, jd)
+      for p, l in x.items():
+        self.units += [(p + '/', 'package', jdi)]
+        for c, t in l:
+          self.units += [(p + '/' + c, t, jdi)]
+    self.units.sort()
+
+    self.time['index'] = time() - self.time['index']
+
+  def send_answer(self):
+    self.time['send_answer'] = time()
+    sz = 0
+    for un, _, _ in self.units:
+      sz += len(un) + 1
+    self.response.out.write(str(sz) + '\n')
+    for un, _, _ in self.units:
+      self.response.out.write(un + '\n')
+    self.response.out.write(str(len(self.javadocs)) + '\n')
+    for jd in self.javadocs:
+      self.response.out.write(jd + '\n')
+    self.response.out.write(str(len(self.units)) + '\n')
+    idx = 0
+    for un, ut, uj in self.units:
+      self.response.out.write(str(idx) + ' ' + ut + ' ' + str(uj) + '\n')
+      idx += len(un) + 1
+    # TODO(radugrigore): send suffix array
+    self.time['send_answer'] = time() - self.time['send_answer']
+
+  def send_debug(self):
+    self.response.out.write('\n')
+    for category, t in self.time.items():
+      self.response.out.write(category + ' ' + str(t) + '\n')
+
   def get(self):
+    self.time = dict()
+    self.time['collect'] = time()
     self.response.headers['Content-Type'] = 'text/plain'
-    url = self.request.get('url') + '/allclasses-frame.html'
     force = self.request.get('force')
-    data = memcache.get('url::' + url)
-    r = '0\n0\n'
-    if data and not force: 
-      r = data
-    else:
-      try:
-        fr = urlfetch.fetch(url)
-        if fr.status_code == 200:
-          p = ClassListParser()
-          p.feed(fr.content)
-          r = p.result()
-          memcache.add('url::' + url, r, 604800) # remember at most one week
-      except:
-        r = '0\n0\n'
-    self.response.out.write(r)
+    i = 0
+    parser = ClassListParser()
+    self.raw = dict()
+    while True:
+      javadoc = self.request.get('url' + str(i))
+      if not javadoc: 
+        break
+      url = javadoc + '/allclasses-frame.html'
+      data = None
+      if not force: 
+        data = memcache.get('url::' + javadoc)
+        self.response.out.write(javadoc + ' cached\n')
+      if data is None:
+        try:
+          fetch_result = urlfetch.fetch(url)
+          if fetch_result.status_code == 200:
+            data = parser.process(fetch_result.content)
+            self.response.out.write(javadoc + ' computed\n')
+          memcache.add('url::' + javadoc, data, 604800) # remember <= 1 week
+        except:
+          pass
+      if data:
+        self.raw[javadoc] = data
+      i += 1
+    self.time['collect'] = time() - self.time['collect']
+    self.index()
+    self.send_answer()
+    self.send_debug()
 
 application = webapp.WSGIApplication(
                                      [('/fetch', MainPage)],
