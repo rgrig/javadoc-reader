@@ -19,11 +19,14 @@ public class Scanner {
     pos += cnt;
   }
 
+  public int pos() {
+    return pos;
+  }
+
   public String next() { 
     char c;
     int oldPos = pos;
     while ((c = s.charAt(pos++)) != ' ' && c != '\n');
-    ++pos;
     return s.substring(oldPos, pos - 1);
   }
 
@@ -32,7 +35,6 @@ public class Scanner {
     int r = 0;
     while ((c = s.charAt(pos++)) != ' ' && c != '\n')
       r = 10 * r + (int) c - (int) '0';
-    ++pos;
     return r;
   }
 }

@@ -67,7 +67,43 @@ public class Main implements EntryPoint {
         "http://google-web-toolkit.googlecode.com/svn/javadoc/1.6",
         "http://google-collections.googlecode.com/svn/trunk/javadoc",
         "http://help.eclipse.org/galileo/nftopic/org.eclipse.platform.doc.isv/reference/api",
-        "http://bits.netbeans.org/dev/javadoc"
+        "http://bits.netbeans.org/dev/javadoc",
+        "http://commons.apache.org/attributes/api",
+        "http://commons.apache.org/beanutils/v1.8.0/apidocs",
+        "http://commons.apache.org/betwixt/apidocs",
+        "http://commons.apache.org/chain/api-release",
+        "http://commons.apache.org/cli/api-release",
+        "http://commons.apache.org/codec/api-release",
+        "http://commons.apache.org/collections/api-release",
+        "http://commons.apache.org/compress/apidocs",
+        "http://commons.apache.org/configuration/apidocs",
+        "http://commons.apache.org/daemon/apidocs",
+        "http://commons.apache.org/dbcp/apidocs",
+        "http://commons.apache.org/dbutils/apidocs",
+        "http://commons.apache.org/digester/apidocs",
+        "http://commons.apache.org/discovery/apidocs",
+        "http://commons.apache.org/el/apidocs",
+        "http://commons.apache.org/email/api-release",
+        "http://commons.apache.org/exec/apidocs",
+        "http://commons.apache.org/fileupload/apidocs",
+        "http://commons.apache.org/io/api-release",
+        "http://commons.apache.org/jci/apidocs",
+        "http://commons.apache.org/jexl/apidocs",
+        "http://commons.apache.org/jxpath/apidocs",
+        "http://commons.apache.org/lang/apidocs",
+        "http://commons.apache.org/launcher/apidocs",
+        "http://commons.apache.org/logging/apidocs",
+        "http://commons.apache.org/math/api-2.0",
+        "http://commons.apache.org/modeler/apidocs",
+        "http://commons.apache.org/net/apidocs",
+        "http://commons.apache.org/pool/apidocs",
+        "http://commons.apache.org/primitives/apidocs",
+        "http://commons.apache.org/proxy/apidocs",
+        "http://commons.apache.org/sanselan/api-release",
+        "http://commons.apache.org/scxml/0.9/apidocs",
+        "http://commons.apache.org/transaction/apidocs",
+        "http://commons.apache.org/validator/api-1.3.1",
+        "http://commons.apache.org/vfs/apidocs"
     );
   }
 
@@ -85,14 +121,16 @@ public class Main implements EntryPoint {
 
   private void getWorkingSet(String javadocs) {
     uid = Cookies.getCookie("java-api.uid");
-    String url = "/workingset?";
-    if (uid != null) url += "uid=" + uid;
-    url += javadocs;
-    RequestBuilder rb = new RequestBuilder(RequestBuilder.GET, url);
+    String url = "/workingset";
+    String postData = "";
+    if (uid != null) postData += "uid=" + uid;
+    postData += javadocs;
+    RequestBuilder rb = new RequestBuilder(RequestBuilder.POST, url);
     rb.setHeader("Accept-Encoding", "gzip");
     rb.setHeader("User-Agent", "gzip");
+    rb.setHeader("Content-Type", "application/x-www-form-urlencoded");
     try {
-      rb.sendRequest(null, new RequestCallback() {
+      rb.sendRequest(postData, new RequestCallback() {
         @Override public void onError(Request r, Throwable e) {
 Window.alert("DBG: http request error: " + e);
         }
@@ -117,12 +155,12 @@ Window.alert("DBG: RequestException: " + e);
 
   private void getAllUnits(String javadocs) {
     RequestBuilder rb = new RequestBuilder(
-        RequestBuilder.GET,
-        "/fetch?" + javadocs);
+        RequestBuilder.POST,"/fetch");
     rb.setHeader("Accept-Encoding", "gzip");
     rb.setHeader("User-Agent", "gzip");
+    rb.setHeader("Content-Type", "application/x-www-form-urlencoded");
     try {
-      rb.sendRequest(null, new RequestCallback() {
+      rb.sendRequest(javadocs, new RequestCallback() {
         @Override public void onError(Request r, Throwable e) {
 Window.alert("DBG: http request error: " + e);
         }
@@ -131,13 +169,35 @@ Window.alert("DBG: http request error: " + e);
           if (response.getStatusCode() == 200) {
             long afterFetch = System.currentTimeMillis();
             reportTime("fetching all", timeLabels[1], startSetUrl, afterFetch);
-            Scanner s = new Scanner(response.getText());
-            assert false : "todo: parsing of index";
+            String text = response.getText();
+            Scanner scan = new Scanner(text);
+            int bufferSize = scan.nextInt();
+            index.unitsBuffer = text.substring(
+                scan.pos(), 
+                scan.pos() + bufferSize);
+            scan.skip(bufferSize);
+            int javadocCount = scan.nextInt();
+            index.javadocs = new String[javadocCount];
+            for (int i = 0; i < javadocCount; ++i)
+              index.javadocs[i] = scan.next();
+            int unitCount = scan.nextInt();
+            index.allUnits = new Index.Unit[unitCount];
+            for (int i = 0; i < unitCount; ++i) {
+              index.allUnits[i] = new Index.Unit();
+              index.allUnits[i].rep = scan.nextInt();
+              index.allUnits[i].type = scan.next();
+              index.allUnits[i].javadoc = scan.nextInt();
+            }
+            index.unitsBufferSuffixes = new int[bufferSize];
+            for (int i = 0; i < bufferSize; ++i)
+              index.unitsBufferSuffixes[i] = scan.nextInt();
             reportTime("parsing", timeLabels[2], afterFetch, System.currentTimeMillis());
           }
         }
       });
-    } catch (RequestException e) { }
+    } catch (RequestException e) { 
+Window.alert("DBG: http request error: " + e);
+    }
   }
 
   private void find(String needle) {
@@ -148,23 +208,13 @@ Window.alert("DBG: http request error: " + e);
       assert false : "todo";
       reportTime("identifying most used", timeLabels[3], start, System.currentTimeMillis());
     } else {
-      needle = needle.toLowerCase();
-      boolean hasDot = false;
-      boolean hasSpecial = false;
-      for (int i = 0; i < needle.length(); ++i) {
-        hasDot |= needle.charAt(i) == '.';
-        hasSpecial |= 
-            !Character.isLetterOrDigit(needle.charAt(i)) && 
-            needle.charAt(i) != '.';
-      }
-      if (hasSpecial)
-        needle = "^" + needle.replaceAll("\\.", "\\.").replaceAll("\\*", ".*") + "$";
-      else if (hasDot)
-        needle = needle.replaceAll("\\.", "\\\\.");
-      else
-        needle = needle + "[^\\.]*$";
       reportTime("preparing", timeLabels[3], start, System.currentTimeMillis());
-      assert false : "todo: the actual search";
+      start = System.currentTimeMillis();
+      index.needle(needle);
+      reportTime("searching", timeLabels[4], start, System.currentTimeMillis());
+      //HTML[] results = index.getMoreResults(Integer.MAX_VALUE);
+      //for (HTML r : results) resultsPanel.add(r);
+      timeLabels[5].setText("resultsCount=" + index.resultsCount());
     }
   }
 
