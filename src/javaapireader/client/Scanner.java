@@ -6,18 +6,18 @@ public class Scanner {
   private int pos;
   private String next;
 
-  public Scanner(String s) { 
+  public Scanner(String s) {
     this.s = s; read();
   }
 
   public boolean hasNext() {
-    return next != null; 
+    return next != null;
   }
 
-  public String next() { 
-    String r = next; 
-    read(); 
-    return r; 
+  public String next() {
+    String r = next;
+    read();
+    return r;
   }
 
   // assumes that |next| contains a non-negative integer

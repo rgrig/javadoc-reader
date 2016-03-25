@@ -52,7 +52,7 @@ class WorkingSetPage(webapp.RequestHandler):
       if u.unit:
         units += [u.unit]
     counters = UsageCounter.all().filter(
-        'uid =', uid).filter('url =', url).fetch(1) 
+        'uid =', uid).filter('url =', url).fetch(1)
     if (len(counters) > 0):
       ns = counters[0].next_slot
       units = units[ns:] + units[:ns]
@@ -99,7 +99,7 @@ class WorkingSetPage(webapp.RequestHandler):
         uid = rand()
         units = self.getUnits('ALL', url)
         self.response.out.write('%s\n%d\n' % (uid, len(units)))
-        for c in units: 
+        for c in units:
           self.response.out.write(c + '\n')
 
 application = webapp.WSGIApplication(
@@ -111,4 +111,4 @@ def main():
 
 if __name__ == "__main__":
   main()
- 
+

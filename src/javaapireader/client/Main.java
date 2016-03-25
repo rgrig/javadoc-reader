@@ -40,7 +40,7 @@ public class Main implements EntryPoint {
 
   // the result of the last search
   private Index index;
-  private Finder<PackageUnit> workingSetPackageFinder = 
+  private Finder<PackageUnit> workingSetPackageFinder =
       new Finder<PackageUnit>();
   private Finder<ClassUnit> workingSetClassFinder = new Finder<ClassUnit>();
   private Finder<PackageUnit> packageFinder = new Finder<PackageUnit>();
@@ -50,7 +50,7 @@ public class Main implements EntryPoint {
   public void onModuleLoad() {
     // set up the layout
     final TextBox urlBox = new TextBox();
-    urlBox.setText("http://java.sun.com/javase/6/docs/api/");
+    urlBox.setText("http://download.java.net/jdk9/docs/api/");
     final Button urlButton = new Button("set");
     final HorizontalPanel urlPanel = new HorizontalPanel();
     urlPanel.add(urlBox);
@@ -115,8 +115,8 @@ public class Main implements EntryPoint {
       @Override public void go(String s) { setUrl(s); }
     };
     moreClassesButton.addClickHandler(new ClickHandler() {
-      @Override public void onClick(ClickEvent e) { 
-        reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[3]); 
+      @Override public void onClick(ClickEvent e) {
+        reportMore(classFinder, classesPanel, classesMenuPanel, timeLabels[3]);
       }
     });
     morePackagesButton.addClickHandler(new ClickHandler() {
@@ -169,7 +169,7 @@ Window.alert("DBG: http request error: " + e);
           if (response.getStatusCode() == 200) {
             Scanner s = new Scanner(response.getText());
             Cookies.setCookie(
-              "java-api.uid", 
+              "java-api.uid",
               uid = s.next(),
               new Date(System.currentTimeMillis() + 1000l * 60l * 60l * 24l * 365l));
             int cCnt = s.nextInt();
@@ -186,8 +186,8 @@ Window.alert("DBG: http request error: " + e);
                       index,
                       null); // this should never be clicked
                   index.addRecentClass(new ClassUnit(
-                      p, 
-                      unitName.substring(split+1, unitName.length()), 
+                      p,
+                      unitName.substring(split+1, unitName.length()),
                       isInterface,
                       index,
                       workingSetClassFinder));
@@ -259,7 +259,7 @@ Window.alert("DBG: http request error: " + e);
   }
 
   private <T extends Unit> void displayWorkingSetTop(
-      Finder<T> finder, 
+      Finder<T> finder,
       Panel panel
   ) {
     List<T> units = finder.hay();
@@ -295,8 +295,8 @@ Window.alert("DBG: http request error: " + e);
       boolean hasSpecial = false;
       for (int i = 0; i < needle.length(); ++i) {
         hasDot |= needle.charAt(i) == '.';
-        hasSpecial |= 
-            !Character.isLetterOrDigit(needle.charAt(i)) && 
+        hasSpecial |=
+            !Character.isLetterOrDigit(needle.charAt(i)) &&
             needle.charAt(i) != '.';
       }
       if (hasSpecial)
@@ -317,8 +317,8 @@ Window.alert("DBG: http request error: " + e);
   }
 
   private void reportMore(
-      Finder finder, 
-      ComplexPanel resultPanel, 
+      Finder finder,
+      ComplexPanel resultPanel,
       Panel morePanel,
       Label timeLabel
   ) {

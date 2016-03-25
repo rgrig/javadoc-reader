@@ -1,7 +1,8 @@
-application: java-api
+application: javadoc-reader
 version: dev
-runtime: python
+runtime: python27
 api_version: 1
+threadsafe: no
 
 #default_expiration: "7d"  # to uncomment when going live
 
